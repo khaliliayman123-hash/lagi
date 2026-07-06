@@ -296,7 +296,8 @@ export default function KonselingView({
   // Memoized calculations for students who have violations or remissions
   const studentPointSummaries = useMemo(() => {
     return db.siswa.map(siswa => {
-      const kelas = db.kelas.find(c => c.id === siswa.kelasId);
+      const kelas = db.kelas.find(c => c.id === siswa.kelasId || c.namaKelas.toLowerCase().trim() === siswa.kelasId?.toLowerCase().trim());
+      const kelasName = kelas?.namaKelas || siswa.kelasId || 'Kelas Tidak Terdata';
       const pelanggaranList = db.pelanggaran.filter(p => p.siswaId === siswa.id);
       const totalPelanggaran = pelanggaranList.reduce((sum, p) => sum + (p.poin || 0), 0);
       
@@ -334,7 +335,7 @@ export default function KonselingView({
 
       return {
         siswa,
-        kelasName: kelas?.namaKelas || 'Kelas Tidak Terdata',
+        kelasName,
         totalPelanggaran,
         totalRemisi,
         sisaPoin,
@@ -1105,7 +1106,7 @@ export default function KonselingView({
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider">
                   <th className="py-3 px-4">Siswa</th>
-                  <th className="py-3 px-4">Hasil AKPD & DCM</th>
+                  <th className="py-3 px-4">Hasil AKPD & Gaya Belajar</th>
                   <th className="py-3 px-4">AUM & IQ</th>
                   <th className="py-3 px-4">Bakat & Minat Asesmen</th>
                   <th className="py-3 px-4 text-center">Aksi</th>
@@ -1120,7 +1121,7 @@ export default function KonselingView({
                         <td className="py-3 px-4 font-bold text-slate-800">{siswa?.nama || 'Siswa'}</td>
                         <td className="py-3 px-4">
                           <p className="font-semibold text-indigo-700">AKPD: {a.akpd || '-'}</p>
-                          <p className="text-slate-500">DCM: {a.dcm || '-'}</p>
+                          <p className="text-slate-500">Gaya Belajar: {a.dcm || '-'}</p>
                         </td>
                         <td className="py-3 px-4">
                           <p className="font-semibold text-slate-600">AUM: {a.aum || '-'}</p>
@@ -1486,8 +1487,8 @@ export default function KonselingView({
                       <input type="text" value={formAsesmen.akpd || ''} onChange={(e) => setFormAsesmen(prev => ({ ...prev, akpd: e.target.value }))} className="p-2.5 border border-slate-200 rounded-xl w-full" />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-500 mb-1">Daftar Cek Masalah (DCM)</label>
-                      <input type="text" value={formAsesmen.dcm || ''} onChange={(e) => setFormAsesmen(prev => ({ ...prev, dcm: e.target.value }))} className="p-2.5 border border-slate-200 rounded-xl w-full" />
+                      <label className="block text-[10px] font-bold text-slate-500 mb-1">Gaya Belajar</label>
+                      <input type="text" placeholder="e.g., Visual, Auditori, Kinestetik" value={formAsesmen.dcm || ''} onChange={(e) => setFormAsesmen(prev => ({ ...prev, dcm: e.target.value }))} className="p-2.5 border border-slate-200 rounded-xl w-full" />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">

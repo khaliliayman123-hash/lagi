@@ -78,10 +78,10 @@ export default function App() {
     loadDatabase();
   }, []);
 
-  const loadDatabase = async (checkConnection: boolean = false) => {
+  const loadDatabase = async (checkConnection: boolean = false, localOnly: boolean = false) => {
     setIsLoading(true);
     try {
-      const data = await apiService.getData();
+      const data = await apiService.getData(false, localOnly);
       setDb(data);
       setGasUrlInput(data.config.gasApiUrl || '');
       setSpreadsheetIdInput(data.config.spreadsheetId || '');
@@ -176,9 +176,11 @@ export default function App() {
       const res = await apiService.saveSiswa(siswa, orangTua, kesehatan, ekonomi, psikologi, sosial, akademik, isNew, localOnly);
       if (!silent) {
         alert(res.message);
-        await loadDatabase();
+        if (res.success) {
+          await loadDatabase(false, true);
+        }
       }
-      return true;
+      return res.success;
     } catch (e: any) {
       if (!silent) alert('Gagal menyimpan siswa: ' + e.toString());
       return false;
@@ -192,7 +194,7 @@ export default function App() {
     try {
       const res = await apiService.deleteSiswa(id);
       alert(res.message);
-      await loadDatabase();
+      await loadDatabase(false, true);
       return true;
     } catch (e: any) {
       alert('Gagal menghapus siswa: ' + e.toString());
@@ -578,13 +580,13 @@ export default function App() {
             onSavePrestasi={async (p, isNew) => {
               const res = await apiService.savePrestasi(p, isNew);
               alert(res.message);
-              await loadDatabase();
+              await loadDatabase(false, true);
               return true;
             }}
             onDeletePrestasi={async (id) => {
               const res = await apiService.deletePrestasi(id);
               alert(res.message);
-              await loadDatabase();
+              await loadDatabase(false, true);
               return true;
             }}
             onRefresh={async () => {
@@ -592,6 +594,27 @@ export default function App() {
             }}
             preSelectedSiswaId={deepLinkSiswaId}
             preSelectedSubTab={deepLinkSubTab}
+            onSaveSurat={async (s, isNew) => {
+              setDb(prev => {
+                if (!prev) return prev;
+                const list = isNew 
+                  ? [...prev.surat, s] 
+                  : prev.surat.map(item => item.id === s.id ? s : item);
+                return { ...prev, surat: list };
+              });
+              const res = await apiService.saveSurat(s, isNew);
+              showToast(res.message, 'success');
+              return true;
+            }}
+            onDeleteSurat={async (id) => {
+              setDb(prev => {
+                if (!prev) return prev;
+                return { ...prev, surat: prev.surat.filter(item => item.id !== id) };
+              });
+              const res = await apiService.deleteSurat(id);
+              showToast(res.message, 'success');
+              return true;
+            }}
           />
         )}
 
@@ -862,50 +885,51 @@ export default function App() {
             onSaveTP={async (tp, isNew) => {
               const res = await apiService.saveTahunPelajaran(tp, isNew);
               alert(res.message);
-              await loadDatabase();
-              return true;
+              if (res.success) {
+                await loadDatabase(false, true);
+              }
+              return res.success;
             }}
             onDeleteTP={async (id) => {
               const res = await apiService.deleteTahunPelajaran(id);
               alert(res.message);
-              await loadDatabase();
-              return true;
+              if (res.success) {
+                await loadDatabase(false, true);
+              }
+              return res.success;
             }}
             onSaveKelas={async (kl, isNew) => {
               const res = await apiService.saveKelas(kl, isNew);
               alert(res.message);
-              await loadDatabase();
-              return true;
+              if (res.success) {
+                await loadDatabase(false, true);
+              }
+              return res.success;
             }}
             onDeleteKelas={async (id) => {
               const res = await apiService.deleteKelas(id);
               alert(res.message);
-              await loadDatabase();
-              return true;
+              if (res.success) {
+                await loadDatabase(false, true);
+              }
+              return res.success;
             }}
-            onSaveJurusan={async (jr, isNew) => {
-              const res = await apiService.saveJurusan(jr, isNew);
-              alert(res.message);
-              await loadDatabase();
-              return true;
-            }}
-            onDeleteJurusan={async (id) => {
-              const res = await apiService.deleteJurusan(id);
-              alert(res.message);
-              await loadDatabase();
-              return true;
-            }}
+
             onSaveUser={async (u, isNew) => {
               const res = await apiService.saveUser(u, isNew);
               alert(res.message);
-              await loadDatabase();
-              return true;
+              if (res.success) {
+                await loadDatabase(false, true);
+              }
+              return res.success;
             }}
             onDeleteUser={async (id) => {
               const res = await apiService.deleteUser(id);
               alert(res.message);
-              await loadDatabase();
-              return true;
+              if (res.success) {
+                await loadDatabase(false, true);
+              }
+              return res.success;
             }}
           />
         )}

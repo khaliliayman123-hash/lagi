@@ -40,6 +40,7 @@ export interface Siswa {
   kelasId: string;
   jurusanId: string;
   tahunMasuk: string;
+  tahunPelajaran: string;
 }
 
 export interface OrangTua {
@@ -174,7 +175,7 @@ export interface Asesmen {
   id: string;
   siswaId: string;
   akpd?: string; // Angket Kebutuhan Peserta Didik
-  dcm?: string; // Daftar Cek Masalah
+  dcm?: string; // Gaya Belajar (Sebelumnya DCM / Daftar Cek Masalah, disimpan sebagai dcm demi kompatibilitas)
   aum?: string; // Alat Ungkap Masalah
   iq?: number;
   bakat?: string;

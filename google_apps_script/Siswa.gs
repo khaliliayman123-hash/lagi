@@ -10,6 +10,10 @@
 
 function saveSiswaPackage(db, payload) {
   db = db || getDatabaseSheets();
+  if (!payload) {
+    Logger.log("Peringatan: Fungsi saveSiswaPackage dijalankan tanpa parameter payload. Jika Anda menjalankan fungsi ini secara manual di editor Apps Script untuk memberikan izin akses (otorisasi), hal ini wajar dan sukses!");
+    return { success: false, message: "Payload kosong. Fungsi ini seharusnya dipanggil dari aplikasi web." };
+  }
   const siswa = payload.siswa;
 
   const orangTua = payload.orangTua;
@@ -21,6 +25,9 @@ function saveSiswaPackage(db, payload) {
   const isNew = payload.isNew;
 
   try {
+    if (!siswa) {
+      throw new Error("Data siswa tidak ditemukan dalam payload.");
+    }
     saveRowEntity(db, "Siswa", siswa, isNew);
     saveRowEntity(db, "OrangTua", orangTua, isNew);
     saveRowEntity(db, "Kesehatan", kesehatan, isNew);
@@ -37,6 +44,10 @@ function saveSiswaPackage(db, payload) {
 
 function deleteSiswaPackage(db, siswaId) {
   db = db || getDatabaseSheets();
+  if (!siswaId) {
+    Logger.log("Peringatan: Fungsi deleteSiswaPackage dijalankan tanpa parameter siswaId.");
+    return { success: false, message: "siswaId kosong." };
+  }
   
   // List of sheets where the student ID is the first column (id)
   const idSheets = ["Siswa", "OrangTua", "Kesehatan", "Ekonomi", "Psikologi", "Sosial", "Akademik"];

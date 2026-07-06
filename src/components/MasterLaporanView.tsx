@@ -30,8 +30,7 @@ import {
   User, 
   UserRole,
   TahunPelajaran,
-  Kelas,
-  Jurusan
+  Kelas
 } from '../types';
 
 interface MasterLaporanViewProps {
@@ -43,8 +42,6 @@ interface MasterLaporanViewProps {
   onDeleteTP: (id: string) => Promise<boolean>;
   onSaveKelas: (kl: Kelas, isNew: boolean) => Promise<boolean>;
   onDeleteKelas: (id: string) => Promise<boolean>;
-  onSaveJurusan: (jr: Jurusan, isNew: boolean) => Promise<boolean>;
-  onDeleteJurusan: (id: string) => Promise<boolean>;
   onSaveUser: (u: User, isNew: boolean) => Promise<boolean>;
   onDeleteUser: (id: string) => Promise<boolean>;
 }
@@ -56,8 +53,6 @@ export default function MasterLaporanView({
   onDeleteTP,
   onSaveKelas,
   onDeleteKelas,
-  onSaveJurusan,
-  onDeleteJurusan,
   onSaveUser,
   onDeleteUser
 }: MasterLaporanViewProps) {
@@ -74,7 +69,7 @@ export default function MasterLaporanView({
   const [filterGuruBkId, setFilterGuruBkId] = useState<string>('All');
 
   // MASTER DATA STATE NAVIGATION
-  const [activeMasterTab, setActiveMasterTab] = useState<'tp' | 'kelas' | 'jurusan' | 'users'>('tp');
+  const [activeMasterTab, setActiveMasterTab] = useState<'tp' | 'kelas' | 'users'>('tp');
   const [isMasterFormOpen, setIsMasterFormOpen] = useState(false);
   const [editingMasterId, setEditingMasterId] = useState<string | null>(null);
 
@@ -91,7 +86,6 @@ export default function MasterLaporanView({
   // Unified master entity payload form state
   const [formTP, setFormTP] = useState<Partial<TahunPelajaran>>({});
   const [formKelas, setFormKelas] = useState<Partial<Kelas>>({});
-  const [formJurusan, setFormJurusan] = useState<Partial<Jurusan>>({});
   const [formUser, setFormUser] = useState<Partial<User>>({});
 
   // Compile matched report data based on filters
@@ -107,8 +101,10 @@ export default function MasterLaporanView({
       const matchGuru = filterGuruBkId === 'All' || kelasObj?.waliKelasId === filterGuruBkId;
 
       // Filter by school year (text matching on student's entry year or available academic state)
+      const queryLower = filterTahunText.toLowerCase().trim();
       const matchTahun = !filterTahunText.trim() || 
-        s.tahunMasuk.toLowerCase().includes(filterTahunText.toLowerCase().trim());
+        (s.tahunMasuk && String(s.tahunMasuk).toLowerCase().includes(queryLower)) ||
+        (s.tahunPelajaran && String(s.tahunPelajaran).toLowerCase().includes(queryLower));
 
       return matchKelas && matchSemester && matchGuru && matchTahun;
     });
@@ -148,9 +144,11 @@ export default function MasterLaporanView({
       const matchGuru = filterGuruBkId === 'All' || kelasObj?.waliKelasId === filterGuruBkId;
 
       // Filter by school year (text matching on student's entry year or available academic state or date)
+      const queryLower = filterTahunText.toLowerCase().trim();
       const matchTahun = !filterTahunText.trim() || 
-        s.tahunMasuk.toLowerCase().includes(filterTahunText.toLowerCase().trim()) ||
-        p.tanggal.toLowerCase().includes(filterTahunText.toLowerCase().trim());
+        (s.tahunMasuk && String(s.tahunMasuk).toLowerCase().includes(queryLower)) ||
+        (s.tahunPelajaran && String(s.tahunPelajaran).toLowerCase().includes(queryLower)) ||
+        (p.tanggal && String(p.tanggal).toLowerCase().includes(queryLower));
 
       return matchKelas && matchSemester && matchGuru && matchTahun;
     });
@@ -623,12 +621,6 @@ export default function MasterLaporanView({
         namaKelas: '',
         waliKelasId: db.users[0]?.id || ''
       } : entity);
-    } else if (activeMasterTab === 'jurusan') {
-      setFormJurusan(isNew ? {
-        id: `jr-${Date.now()}`,
-        namaJurusan: '',
-        singkatan: ''
-      } : entity);
     } else if (activeMasterTab === 'users') {
       setFormUser(isNew ? {
         id: `usr-${Date.now()}`,
@@ -652,8 +644,6 @@ export default function MasterLaporanView({
       success = await onSaveTP(formTP as TahunPelajaran, isNew);
     } else if (activeMasterTab === 'kelas') {
       success = await onSaveKelas(formKelas as Kelas, isNew);
-    } else if (activeMasterTab === 'jurusan') {
-      success = await onSaveJurusan(formJurusan as Jurusan, isNew);
     } else if (activeMasterTab === 'users') {
       success = await onSaveUser(formUser as User, isNew);
     }
@@ -674,7 +664,6 @@ export default function MasterLaporanView({
     try {
       if (activeMasterTab === 'tp') await onDeleteTP(deleteConfirmId);
       else if (activeMasterTab === 'kelas') await onDeleteKelas(deleteConfirmId);
-      else if (activeMasterTab === 'jurusan') await onDeleteJurusan(deleteConfirmId);
       else if (activeMasterTab === 'users') await onDeleteUser(deleteConfirmId);
     } catch (err) {
       console.error('Error deleting master item:', err);
@@ -1236,26 +1225,6 @@ export default function MasterLaporanView({
                 </table>
               )}
 
-              {activeMasterTab === 'jurusan' && (
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-100 py-2 px-4"><th className="p-3">Kompetensi Jurusan</th><th className="p-3">Singkatan</th><th className="p-3 text-center">Aksi</th></tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50 text-slate-700">
-                    {db.jurusan.map(item => (
-                      <tr key={item.id} className="hover:bg-slate-50/30">
-                        <td className="p-3 font-semibold text-slate-700">{item.namaJurusan}</td>
-                        <td className="p-3 font-mono font-bold text-emerald-600">{item.singkatan}</td>
-                        <td className="p-3 text-center flex justify-center gap-2">
-                          <button onClick={() => openMasterEditor(item)} className="p-1 text-slate-500 hover:text-slate-800"><Edit3 size={12} /></button>
-                          <button onClick={() => handleMasterDelete(item.id)} className="p-1 text-rose-500 hover:text-rose-700"><Trash2 size={12} /></button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-
               {activeMasterTab === 'users' && (
                 <table className="w-full text-left">
                   <thead>
@@ -1320,7 +1289,7 @@ export default function MasterLaporanView({
               {activeMasterTab === 'kelas' && (
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Nama Rombel / Kelas (e.g., XII RPL 1)</label>
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Nama Rombel / Kelas (e.g., Kelas 7-1)</label>
                     <input type="text" value={formKelas.namaKelas || ''} onChange={(e) => setFormKelas(prev => ({ ...prev, namaKelas: e.target.value }))} className="p-2.5 border border-slate-200 rounded-xl w-full" required />
                   </div>
                   <div>
@@ -1328,19 +1297,6 @@ export default function MasterLaporanView({
                     <select value={formKelas.waliKelasId || ''} onChange={(e) => setFormKelas(prev => ({ ...prev, waliKelasId: e.target.value }))} className="p-2.5 border border-slate-200 bg-white rounded-xl w-full" required>
                       {db.users.map(u => <option key={u.id} value={u.id}>{u.nama} ({u.role})</option>)}
                     </select>
-                  </div>
-                </div>
-              )}
-
-              {activeMasterTab === 'jurusan' && (
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Nama Kompetensi Jurusan</label>
-                    <input type="text" value={formJurusan.namaJurusan || ''} onChange={(e) => setFormJurusan(prev => ({ ...prev, namaJurusan: e.target.value }))} className="p-2.5 border border-slate-200 rounded-xl w-full" required />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Singkatan Singkat (e.g., RPL)</label>
-                    <input type="text" value={formJurusan.singkatan || ''} onChange={(e) => setFormJurusan(prev => ({ ...prev, singkatan: e.target.value }))} className="p-2.5 border border-slate-200 rounded-xl w-full" required />
                   </div>
                 </div>
               )}

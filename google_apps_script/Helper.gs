@@ -70,7 +70,7 @@ function fetchFullDatabase(db) {
   
   const schema = {
     "Users": ["id", "username", "nama", "role", "email", "isActive"],
-    "Siswa": ["id", "nis", "nisn", "nama", "foto", "tempatLahir", "tanggalLahir", "jenisKelamin", "agama", "alamat", "desa", "kecamatan", "kabupaten", "provinsi", "nomorHp", "email", "kelasId", "jurusanId", "tahunMasuk"],
+    "Siswa": ["id", "nis", "nisn", "nama", "foto", "tempatLahir", "tanggalLahir", "jenisKelamin", "agama", "alamat", "desa", "kecamatan", "kabupaten", "provinsi", "nomorHp", "email", "kelasId", "tahunMasuk"],
     "OrangTua": ["id", "namaAyah", "statusAyah", "tempatLahirAyah", "tanggalLahirAyah", "alamatAyah", "agamaAyah", "pendidikanAyah", "pekerjaanAyah", "noHpAyah", "namaIbu", "statusIbu", "tempatLahirIbu", "tanggalLahirIbu", "alamatIbu", "agamaIbu", "pendidikanIbu", "pekerjaanIbu", "noHpIbu", "wali", "statusWali", "tempatLahirWali", "tanggalLahirWali", "alamatWali", "agamaWali", "pendidikanWali", "pekerjaanWali", "noHpWali", "penghasilan", "pendidikanOrangTua"],
     "Akademik": ["id", "semester", "rataRataRaport", "catatanWaliKelas"],
     "Kesehatan": ["id", "tinggiBadan", "beratBadan", "golonganDarah", "penyakit", "alergi", "disabilitas"],
@@ -88,7 +88,6 @@ function fetchFullDatabase(db) {
     "CatatanPerkembangan": ["id", "siswaId", "tanggal", "catatan", "guruBkId"],
     "TahunPelajaran": ["id", "tahun", "semester", "isActive"],
     "Kelas": ["id", "namaKelas", "waliKelasId"],
-    "Jurusan": ["id", "namaJurusan", "singkatan"],
     "LogAktivitas": ["id", "timestamp", "userId", "namaUser", "role", "aktivitas", "detail"]
   };
 
@@ -278,7 +277,7 @@ function uploadFullDatabase(db, payload) {
   
   const schema = {
     "Users": ["id", "username", "nama", "role", "email", "isActive"],
-    "Siswa": ["id", "nis", "nisn", "nama", "foto", "tempatLahir", "tanggalLahir", "jenisKelamin", "agama", "alamat", "desa", "kecamatan", "kabupaten", "provinsi", "nomorHp", "email", "kelasId", "jurusanId", "tahunMasuk"],
+    "Siswa": ["id", "nis", "nisn", "nama", "foto", "tempatLahir", "tanggalLahir", "jenisKelamin", "agama", "alamat", "desa", "kecamatan", "kabupaten", "provinsi", "nomorHp", "email", "kelasId", "tahunMasuk"],
     "OrangTua": ["id", "namaAyah", "statusAyah", "tempatLahirAyah", "tanggalLahirAyah", "alamatAyah", "agamaAyah", "pendidikanAyah", "pekerjaanAyah", "noHpAyah", "namaIbu", "statusIbu", "tempatLahirIbu", "tanggalLahirIbu", "alamatIbu", "agamaIbu", "pendidikanIbu", "pekerjaanIbu", "noHpIbu", "wali", "statusWali", "tempatLahirWali", "tanggalLahirWali", "alamatWali", "agamaWali", "pendidikanWali", "pekerjaanWali", "noHpWali", "penghasilan", "pendidikanOrangTua"],
     "Akademik": ["id", "semester", "rataRataRaport", "catatanWaliKelas"],
     "Kesehatan": ["id", "tinggiBadan", "beratBadan", "golonganDarah", "penyakit", "alergi", "disabilitas"],
@@ -296,7 +295,6 @@ function uploadFullDatabase(db, payload) {
     "CatatanPerkembangan": ["id", "siswaId", "tanggal", "catatan", "guruBkId"],
     "TahunPelajaran": ["id", "tahun", "semester", "isActive"],
     "Kelas": ["id", "namaKelas", "waliKelasId"],
-    "Jurusan": ["id", "namaJurusan", "singkatan"],
     "LogAktivitas": ["id", "timestamp", "userId", "namaUser", "role", "aktivitas", "detail"]
   };
 

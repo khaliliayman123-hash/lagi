@@ -24,7 +24,7 @@ function setupHDSDatabaseSheets() {
       "id", "username", "nama", "role", "email", "isActive"
     ],
     "Siswa": [
-      "id", "nis", "nisn", "nama", "foto", "tempatLahir", "tanggalLahir", "jenisKelamin", "agama", "alamat", "desa", "kecamatan", "kabupaten", "provinsi", "nomorHp", "email", "kelasId", "jurusanId", "tahunMasuk"
+      "id", "nis", "nisn", "nama", "foto", "tempatLahir", "tanggalLahir", "jenisKelamin", "agama", "alamat", "desa", "kecamatan", "kabupaten", "provinsi", "nomorHp", "email", "kelasId", "tahunMasuk"
     ],
     "OrangTua": [
       "id", "namaAyah", "statusAyah", "tempatLahirAyah", "tanggalLahirAyah", "alamatAyah", "agamaAyah", "pendidikanAyah", "pekerjaanAyah", "noHpAyah", "namaIbu", "statusIbu", "tempatLahirIbu", "tanggalLahirIbu", "alamatIbu", "agamaIbu", "pendidikanIbu", "pekerjaanIbu", "noHpIbu", "wali", "statusWali", "tempatLahirWali", "tanggalLahirWali", "alamatWali", "agamaWali", "pendidikanWali", "pekerjaanWali", "noHpWali", "penghasilan", "pendidikanOrangTua"
@@ -77,9 +77,6 @@ function setupHDSDatabaseSheets() {
     "Kelas": [
       "id", "namaKelas", "waliKelasId"
     ],
-    "Jurusan": [
-      "id", "namaJurusan", "singkatan"
-    ],
     "LogAktivitas": [
       "id", "timestamp", "userId", "namaUser", "role", "aktivitas", "detail"
     ]
@@ -94,11 +91,8 @@ function setupHDSDatabaseSheets() {
       ["tp-2023-ganjil", "2023/2024", "Ganjil", true]
     ],
     "Kelas": [
-      ["kelas-10rpl1", "X RPL 1", "gurubk"],
-      ["kelas-10rpl2", "X RPL 2", "admin"]
-    ],
-    "Jurusan": [
-      ["jurusan-rpl", "Rekayasa Perangkat Lunak", "RPL"]
+      ["kelas-7-1", "Kelas 7-1", "gurubk"],
+      ["kelas-7-2", "Kelas 7-2", "admin"]
     ]
   };
 
@@ -136,5 +130,5 @@ function setupHDSDatabaseSheets() {
     Logger.log("Menghapus sheet bawaan kosong 'Sheet1' untuk kerapihan.");
   }
 
-  Browser.msgBox("Sukses!", "Seluruh 21 tabel HDS Bimbingan dan Konseling telah sukses dibuat dan dikonfigurasi di Google Spreadsheet ini!", Browser.Buttons.OK);
+  Logger.log("SUKSES: Seluruh 21 tabel HDS Bimbingan dan Konseling telah sukses dibuat dan dikonfigurasi di Google Spreadsheet ini!");
 }

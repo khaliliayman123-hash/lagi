@@ -29,7 +29,10 @@ import {
   Upload,
   RefreshCw,
   ExternalLink,
-  AlertCircle
+  AlertCircle,
+  Mail,
+  Printer,
+  FileDown
 } from 'lucide-react';
 import { 
   DatabaseState, 
@@ -42,7 +45,8 @@ import {
   Akademik, 
   User, 
   UserRole,
-  Prestasi
+  Prestasi,
+  Surat
 } from '../types';
 import { apiService } from '../services/api';
 
@@ -67,6 +71,8 @@ interface SiswaViewProps {
   onRefresh?: () => Promise<void>;
   preSelectedSiswaId?: string;
   preSelectedSubTab?: string;
+  onSaveSurat?: (s: Surat, isNew: boolean) => Promise<boolean>;
+  onDeleteSurat?: (id: string) => Promise<boolean>;
 }
 
 export default function SiswaView({ 
@@ -78,7 +84,9 @@ export default function SiswaView({
   onDeletePrestasi,
   onRefresh,
   preSelectedSiswaId,
-  preSelectedSubTab
+  preSelectedSubTab,
+  onSaveSurat,
+  onDeleteSurat
 }: SiswaViewProps) {
   
   const canModify = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.GURU_BK;
@@ -105,7 +113,6 @@ export default function SiswaView({
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedKelas, setSelectedKelas] = useState('All');
-  const [selectedJurusan, setSelectedJurusan] = useState('All');
   const [selectedGender, setSelectedGender] = useState('All');
   
   // Sorting State
@@ -171,6 +178,44 @@ export default function SiswaView({
   const [isImporting, setIsImporting] = useState(false);
   const [importStatus, setImportStatus] = useState<{ success: number; failed: number; details: string[] } | null>(null);
 
+  // Generator Surat BK State in Student Detail
+  const [selectedLetterType, setSelectedLetterType] = useState<string>('Surat Panggilan');
+  const [letterNo, setLetterNo] = useState<string>('');
+  const [letterSubject, setLetterSubject] = useState<string>('');
+  const [letterBody, setLetterBody] = useState<string>('');
+  const [letterDate, setLetterDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [printLetterData, setPrintLetterData] = useState<Surat | null>(null);
+
+  useEffect(() => {
+    if (!viewingSiswa) return;
+    const year = new Date().getFullYear();
+    const count = (db.surat || []).length + 1;
+    const paddedCount = String(count).padStart(3, '0');
+    
+    // Generate nomor surat
+    let code = 'PANG';
+    if (selectedLetterType === 'Surat Kontrak Perilaku') code = 'KONT';
+    else if (selectedLetterType === 'Surat Home Visit') code = 'HOME';
+    else if (selectedLetterType === 'Surat Rujukan') code = 'RUJU';
+    
+    setLetterNo(`${paddedCount}/BK-SMP17/${code}/${year}`);
+    
+    // Generate perihal and isi
+    if (selectedLetterType === 'Surat Panggilan') {
+      setLetterSubject('Undangan Bimbingan & Koordinasi Perkembangan Karakter Siswa');
+      setLetterBody('Sehubungan dengan program bimbingan perkembangan karakter peserta didik SMP Negeri 17 Tangsel, kami bermaksud mengundang Bapak/Ibu sekalian selaku orang tua/wali murid untuk hadir di ruang BK guna berkoordinasi dan mencari solusi terbaik atas kedisiplinan dan perkembangan masa depan putra/putri Bapak/Ibu.');
+    } else if (selectedLetterType === 'Surat Kontrak Perilaku') {
+      setLetterSubject('Surat Perjanjian & Kontrak Komitmen Perilaku Siswa');
+      setLetterBody('Berdasarkan hasil pemantauan dan evaluasi perilaku harian, kami menyusun lembar kesepakatan komitmen perilaku ini secara tertulis. Surat ini mengikat komitmen siswa untuk mematuhi peraturan tata tertib sekolah secara disiplin, konsisten, serta bersedia menerima konsekuensi pembinaan sesuai aturan yang berlaku apabila melanggar perjanjian.');
+    } else if (selectedLetterType === 'Surat Home Visit') {
+      setLetterSubject('Surat Pemberitahuan Pelaksanaan Kunjungan Rumah (Home Visit)');
+      setLetterBody('Dalam rangka menyelaraskan program pendidikan sekolah dengan lingkungan keluarga serta memahami secara mendalam latar belakang perkembangan siswa, tim Bimbingan Konseling (BK) SMP Negeri 17 Tangsel merencanakan kunjungan silaturahmi langsung ke kediaman Bapak/Ibu (Home Visit) pada waktu yang disepakati.');
+    } else if (selectedLetterType === 'Surat Rujukan') {
+      setLetterSubject('Surat Rujukan Penanganan Masalah & Perkembangan Siswa');
+      setLetterBody('Untuk memaksimalkan penanganan komprehensif atas aspek-aspek tumbuh kembang, emosional, atau kebutuhan khusus siswa yang bersangkutan, dengan ini pihak sekolah memberikan rekomendasi rujukan koordinasi bantuan kepada pihak profesional terkait eksternal (psikolog/tenaga medis/lembaga berwenang) demi kebaikan siswa.');
+    }
+  }, [selectedLetterType, viewingSiswa, db.surat]);
+
   // Quotes-aware CSV parsing engine
   const parseCSV = (text: string): string[][] => {
     const lines: string[][] = [];
@@ -224,7 +269,7 @@ export default function SiswaView({
   // Generate and download a pristine Excel Template pre-filled with examples
   const handleDownloadExcelTemplate = () => {
     const headers = [
-      'NIS', 'NISN', 'Nama Lengkap', 'Jenis Kelamin (Laki-laki/Perempuan)', 'Tempat Lahir', 'Tanggal Lahir (YYYY-MM-DD)', 'Agama', 'Nomor HP', 'Email', 'Alamat', 'Tahun Masuk', 'Nama Kelas', 'Nama Jurusan',
+      'NIS', 'NISN', 'Nama Lengkap', 'Jenis Kelamin (Laki-laki/Perempuan)', 'Tempat Lahir', 'Tanggal Lahir (YYYY-MM-DD)', 'Agama', 'Nomor HP', 'Email', 'Alamat', 'Tahun Masuk', 'Nama Kelas', 'Tahun Pelajaran',
       'Nama Ayah', 'Status Ayah (Hidup/Meninggal)', 'Pekerjaan Ayah', 'No HP Ayah', 'Alamat Ayah', 'Nama Ibu', 'Status Ibu (Hidup/Meninggal)', 'Pekerjaan Ibu', 'No HP Ibu', 'Alamat Ibu', 'Nama Wali', 'Pekerjaan Wali', 'Penghasilan Orang Tua', 'Pendidikan Orang Tua',
       'Rata-Rata Rapor', 'Catatan Wali Kelas',
       'Tinggi Badan (cm)', 'Berat Badan (kg)', 'Golongan Darah', 'Riwayat Penyakit', 'Disabilitas', 'Alergi',
@@ -233,7 +278,7 @@ export default function SiswaView({
     ];
 
     const sampleRow = [
-      '123456', '0098765432', 'Budi Pratama', 'Laki-laki', 'Jakarta', '2010-04-12', 'Islam', '081234567890', 'budi.pratama@email.com', 'Jl. Melati No. 15, Ciputat', '2024', 'VII A', 'Umum',
+      '123456', '0098765432', 'Budi Pratama', 'Laki-laki', 'Jakarta', '2010-04-12', 'Islam', '081234567890', 'budi.pratama@email.com', 'Jl. Melati No. 15, Ciputat', '2024', 'Kelas 7-1', '2025/2026',
       'Ahmad Supriatna', 'Hidup', 'PNS', '081299998888', 'Jl. Melati No. 15, Ciputat', 'Siti Aminah', 'Hidup', 'Ibu Rumah Tangga', '081277776666', 'Jl. Melati No. 15, Ciputat', '-', '-', 'Rp 3.000.000 - Rp 5.000.000', 'S1',
       '85.5', 'Budi memiliki perkembangan akademis yang sangat baik dan aktif berorganisasi',
       '165', '55', 'O', 'Tidak Ada', 'Tidak Ada', 'Tidak Ada',
@@ -242,7 +287,7 @@ export default function SiswaView({
     ];
 
     const sampleRow2 = [
-      '123457', '0102345678', 'Siti Rahmawati', 'Perempuan', 'Tangerang', '2011-09-22', 'Islam', '085712345678', 'siti.rahma@email.com', 'Komp. Griya Asri Blok C-2, Pamulang', '2024', 'VII A', 'Umum',
+      '123457', '0102345678', 'Siti Rahmawati', 'Perempuan', 'Tangerang', '2011-09-22', 'Islam', '085712345678', 'siti.rahma@email.com', 'Komp. Griya Asri Blok C-2, Pamulang', '2024', 'Kelas 7-2', '2025/2026',
       'Hadi Wijaya', 'Hidup', 'Wiraswasta', '085799991111', 'Komp. Griya Asri Blok C-2, Pamulang', 'Dewi Lestari', 'Hidup', 'Guru', '085722223333', 'Komp. Griya Asri Blok C-2, Pamulang', '-', '-', 'Rp 5.000.000 - Rp 10.000.000', 'S1',
       '89.2', 'Siti sangat rajin dan teliti di kelas',
       '158', '48', 'A', 'Asma', 'Tidak Ada', 'Alergi Dingin',
@@ -332,12 +377,9 @@ export default function SiswaView({
             const isNew = !existingSiswa;
 
             const rawKelas = row[11] || '';
-            const rawJurusan = row[12] || '';
             const matchKelas = db.kelas.find(k => k.namaKelas.toLowerCase().trim() === rawKelas.toLowerCase().trim());
             const kelasId = matchKelas ? matchKelas.id : (db.kelas[0]?.id || 'kelas-vii-a');
-
-            const matchJurusan = db.jurusan.find(j => j.namaJurusan.toLowerCase().trim() === rawJurusan.toLowerCase().trim());
-            const jurusanId = matchJurusan ? matchJurusan.id : (db.jurusan[0]?.id || 'jurusan-umum');
+            const defaultTP = db.tahunPelajaran.find(tp => tp.isActive)?.tahun || '2025/2026';
 
             const sPack: Siswa = {
               id,
@@ -352,8 +394,9 @@ export default function SiswaView({
               email: row[8] || '-',
               alamat: row[9] || '-',
               tahunMasuk: row[10] || new Date().getFullYear().toString(),
+              tahunPelajaran: row[12] || defaultTP,
               kelasId,
-              jurusanId,
+              jurusanId: '',
               desa: '-',
               kecamatan: '-',
               kabupaten: '-',
@@ -495,7 +538,10 @@ export default function SiswaView({
     if (siswa) {
       // Load current student data pack
       setEditingSiswaId(siswa.id);
-      setFormSiswa(siswa);
+      setFormSiswa({
+        ...siswa,
+        tahunPelajaran: siswa.tahunPelajaran || db.tahunPelajaran.find(tp => tp.isActive)?.tahun || '2025/2026'
+      });
       
       const otData: Partial<OrangTua> = db.orangTua.find(o => o.id === siswa.id) || {};
       setFormOrangTua({
@@ -563,6 +609,7 @@ export default function SiswaView({
         kelasId: db.kelas[0]?.id || '',
         jurusanId: '',
         tahunMasuk: new Date().getFullYear().toString(),
+        tahunPelajaran: db.tahunPelajaran.find(tp => tp.isActive)?.tahun || '2025/2026',
       });
       setFormOrangTua({
         id: newId,
@@ -676,9 +723,8 @@ export default function SiswaView({
                               s.nis.includes(searchQuery) || 
                               s.nisn.includes(searchQuery);
         const matchesKelas = selectedKelas === 'All' || s.kelasId === selectedKelas;
-        const matchesJurusan = selectedJurusan === 'All' || s.jurusanId === selectedJurusan;
         const matchesGender = selectedGender === 'All' || s.jenisKelamin === selectedGender;
-        return matchesSearch && matchesKelas && matchesJurusan && matchesGender;
+        return matchesSearch && matchesKelas && matchesGender;
       })
       .sort((a, b) => {
         let fieldA: any = a.nama;
@@ -695,7 +741,7 @@ export default function SiswaView({
         if (fieldA > fieldB) return sortOrder === 'asc' ? 1 : -1;
         return 0;
       });
-  }, [db.siswa, searchQuery, selectedKelas, selectedJurusan, selectedGender, sortBy, sortOrder]);
+  }, [db.siswa, searchQuery, selectedKelas, selectedGender, sortBy, sortOrder]);
 
   // Paginated lists
   const totalPages = Math.ceil(filteredStudents.length / itemsPerPage);
@@ -707,8 +753,7 @@ export default function SiswaView({
   // SPREADSHEET EXCEL INTEGRATION DATA AGGREGATION
   const spreadsheetRows = useMemo(() => {
     return db.siswa.map((s, idx) => {
-      const kelas = db.kelas.find(k => k.id === s.kelasId)?.namaKelas || '-';
-      const jurusan = db.jurusan.find(j => j.id === s.jurusanId)?.namaJurusan || '-';
+      const kelas = db.kelas.find(k => k.id === s.kelasId || k.namaKelas.toLowerCase().trim() === s.kelasId?.toLowerCase().trim())?.namaKelas || s.kelasId || '-';
       const ot = (db.orangTua.find(o => o.id === s.id) || {}) as Partial<OrangTua>;
       const akad = (db.akademik.find(a => a.id === s.id) || {}) as Partial<Akademik>;
       const kes = (db.kesehatan.find(h => h.id === s.id) || {}) as Partial<Kesehatan>;
@@ -732,7 +777,6 @@ export default function SiswaView({
         nisn: s.nisn || '-',
         nama: s.nama || '-',
         kelas,
-        jurusan,
         gender: s.jenisKelamin || '-',
         tempatLahir: s.tempatLahir || '-',
         tanggalLahir: s.tanggalLahir || '-',
@@ -741,6 +785,7 @@ export default function SiswaView({
         email: s.email || '-',
         alamat: s.alamat || '-',
         tahunMasuk: s.tahunMasuk || '-',
+        tahunPelajaran: s.tahunPelajaran || db.tahunPelajaran.find(tp => tp.isActive)?.tahun || '2025/2026',
         
         // Orang Tua
         namaAyah: ot.namaAyah || '-',
@@ -792,17 +837,16 @@ export default function SiswaView({
         daftarPrestasi
       };
     });
-  }, [db.siswa, db.kelas, db.jurusan, db.orangTua, db.akademik, db.kesehatan, db.ekonomi, db.psikologi, db.prestasi, db.pelanggaran, db.remisiPoin]);
+  }, [db.siswa, db.kelas, db.orangTua, db.akademik, db.kesehatan, db.ekonomi, db.psikologi, db.prestasi, db.pelanggaran, db.remisiPoin]);
 
   const filteredSpreadsheetRows = useMemo(() => {
     if (!spreadsheetSearch) return spreadsheetRows;
     const query = spreadsheetSearch.toLowerCase();
     return spreadsheetRows.filter(row => 
-      row.nama.toLowerCase().includes(query) ||
-      row.nis.toLowerCase().includes(query) ||
-      row.nisn.toLowerCase().includes(query) ||
-      row.kelas.toLowerCase().includes(query) ||
-      row.jurusan.toLowerCase().includes(query)
+      String(row.nama || '').toLowerCase().includes(query) ||
+      String(row.nis || '').toLowerCase().includes(query) ||
+      String(row.nisn || '').toLowerCase().includes(query) ||
+      String(row.kelas || '').toLowerCase().includes(query)
     );
   }, [spreadsheetRows, spreadsheetSearch]);
 
@@ -816,7 +860,7 @@ export default function SiswaView({
         {
           name: 'HDS Komprehensif',
           headers: [
-            'No', 'ID Siswa', 'NIS', 'NISN', 'Nama Siswa', 'Kelas', 'Jurusan', 'Jenis Kelamin', 'Tempat Lahir', 'Tanggal Lahir', 'Agama', 'No HP', 'Email', 'Alamat', 'Tahun Masuk',
+            'No', 'ID Siswa', 'NIS', 'NISN', 'Nama Siswa', 'Kelas', 'Jenis Kelamin', 'Tempat Lahir', 'Tanggal Lahir', 'Agama', 'No HP', 'Email', 'Alamat', 'Tahun Masuk', 'Tahun Pelajaran',
             'Nama Ayah', 'Status Ayah', 'Pekerjaan Ayah', 'No HP Ayah', 'Alamat Ayah', 'Nama Ibu', 'Status Ibu', 'Pekerjaan Ibu', 'No HP Ibu', 'Alamat Ibu', 'Nama Wali', 'Status Wali', 'Pekerjaan Wali', 'Penghasilan Gabungan', 'Pendidikan Keluarga',
             'Rata-Rata Rapor', 'Catatan Wali Kelas', 'Total Poin Pelanggaran',
             'Tinggi Badan (cm)', 'Berat Badan (kg)', 'Golongan Darah', 'Riwayat Penyakit', 'Kelainan Fisik', 'Catatan Medis',
@@ -825,7 +869,7 @@ export default function SiswaView({
             'Jumlah Prestasi', 'Daftar Prestasi'
           ],
           keys: [
-            'no', 'id', 'nis', 'nisn', 'nama', 'kelas', 'jurusan', 'gender', 'tempatLahir', 'tanggalLahir', 'agama', 'noHp', 'email', 'alamat', 'tahunMasuk',
+            'no', 'id', 'nis', 'nisn', 'nama', 'kelas', 'gender', 'tempatLahir', 'tanggalLahir', 'agama', 'noHp', 'email', 'alamat', 'tahunMasuk', 'tahunPelajaran',
             'namaAyah', 'statusAyah', 'pekerjaanAyah', 'noHpAyah', 'alamatAyah', 'namaIbu', 'statusIbu', 'pekerjaanIbu', 'noHpIbu', 'alamatIbu', 'wali', 'statusWali', 'pekerjaanWali', 'penghasilan', 'pendidikanKeluarga',
             'rataRataRapor', 'catatanWaliKelas', 'poinPelanggaran',
             'tinggi', 'berat', 'golDarah', 'riwayatPenyakit', 'kelainanFisik', 'catatanMedis',
@@ -836,8 +880,8 @@ export default function SiswaView({
         },
         {
           name: 'Biodata Siswa',
-          headers: ['No', 'NIS', 'NISN', 'Nama Siswa', 'Kelas', 'Jurusan', 'Gender', 'Tempat Lahir', 'Tanggal Lahir', 'Agama', 'No HP', 'Email', 'Alamat'],
-          keys: ['no', 'nis', 'nisn', 'nama', 'kelas', 'jurusan', 'gender', 'tempatLahir', 'tanggalLahir', 'agama', 'noHp', 'email', 'alamat']
+          headers: ['No', 'NIS', 'NISN', 'Nama Siswa', 'Kelas', 'Gender', 'Tempat Lahir', 'Tanggal Lahir', 'Agama', 'No HP', 'Email', 'Alamat', 'Tahun Masuk', 'Tahun Pelajaran'],
+          keys: ['no', 'nis', 'nisn', 'nama', 'kelas', 'gender', 'tempatLahir', 'tanggalLahir', 'agama', 'noHp', 'email', 'alamat', 'tahunMasuk', 'tahunPelajaran']
         },
         {
           name: 'Data Orang Tua',
@@ -893,8 +937,8 @@ export default function SiswaView({
       let fileName = '';
 
       if (cat === 'biodata') {
-        headers = ['No', 'NIS', 'NISN', 'Nama Siswa', 'Kelas', 'Jurusan', 'Gender', 'Tempat Lahir', 'Tanggal Lahir', 'Agama', 'No HP', 'Email', 'Alamat'];
-        keys = ['no', 'nis', 'nisn', 'nama', 'kelas', 'jurusan', 'gender', 'tempatLahir', 'tanggalLahir', 'agama', 'noHp', 'email', 'alamat'];
+        headers = ['No', 'NIS', 'NISN', 'Nama Siswa', 'Kelas', 'Gender', 'Tempat Lahir', 'Tanggal Lahir', 'Agama', 'No HP', 'Email', 'Alamat', 'Tahun Masuk', 'Tahun Pelajaran'];
+        keys = ['no', 'nis', 'nisn', 'nama', 'kelas', 'gender', 'tempatLahir', 'tanggalLahir', 'agama', 'noHp', 'email', 'alamat', 'tahunMasuk', 'tahunPelajaran'];
         sheetName = 'Biodata Siswa';
         fileName = `hds_biodata_siswa_${new Date().toISOString().split('T')[0]}.xlsx`;
       } else if (cat === 'orangtua') {
@@ -903,8 +947,8 @@ export default function SiswaView({
         sheetName = 'Data Orang Tua';
         fileName = `hds_data_orangtua_${new Date().toISOString().split('T')[0]}.xlsx`;
       } else if (cat === 'akademik') {
-        headers = ['No', 'Nama Siswa', 'Kelas', 'Rata-Rata Rapor', 'Catatan Wali Kelas', 'Total Poin Pelanggaran'];
-        keys = ['no', 'nama', 'kelas', 'rataRataRapor', 'catatanWaliKelas', 'poinPelanggaran'];
+        headers = ['No', 'Nama Siswa', 'Kelas', 'Tahun Pelajaran', 'Rata-Rata Rapor', 'Catatan Wali Kelas', 'Total Poin Pelanggaran'];
+        keys = ['no', 'nama', 'kelas', 'tahunPelajaran', 'rataRataRapor', 'catatanWaliKelas', 'poinPelanggaran'];
         sheetName = 'Akademik Siswa';
         fileName = `hds_akademik_siswa_${new Date().toISOString().split('T')[0]}.xlsx`;
       } else if (cat === 'kesehatan') {
@@ -1072,8 +1116,7 @@ export default function SiswaView({
                 <tbody className="divide-y divide-slate-50">
                   {paginatedStudents.length > 0 ? (
                     paginatedStudents.map((s) => {
-                      const kelasNama = db.kelas.find(k => k.id === s.kelasId)?.namaKelas || '-';
-                      const jurusanSingkat = db.jurusan.find(j => j.id === s.jurusanId)?.singkatan || '';
+                      const kelasNama = db.kelas.find(k => k.id === s.kelasId || k.namaKelas.toLowerCase().trim() === s.kelasId?.toLowerCase().trim())?.namaKelas || s.kelasId || '-';
                       return (
                         <tr key={s.id} className="hover:bg-slate-50/50 transition-all">
                           <td className="py-3.5 px-4 flex items-center gap-3">
@@ -1086,7 +1129,11 @@ export default function SiswaView({
                             </div>
                             <div>
                               <p className="font-bold text-slate-700">{s.nama}</p>
-                              <p className="text-[10px] text-slate-400 font-medium">Masuk: {s.tahunMasuk}</p>
+                              <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-slate-400 font-medium">
+                                <span>Masuk: {s.tahunMasuk}</span>
+                                <span>•</span>
+                                <span>TP: {s.tahunPelajaran || db.tahunPelajaran.find(tp => tp.isActive)?.tahun || '2025/2026'}</span>
+                              </div>
                             </div>
                           </td>
                           <td className="py-3.5 px-4 font-mono text-slate-600">
@@ -1094,7 +1141,7 @@ export default function SiswaView({
                             <div className="text-[10px] text-slate-400">{s.nisn}</div>
                           </td>
                           <td className="py-3.5 px-4 font-semibold text-slate-600">
-                            {kelasNama} <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded ml-1">{jurusanSingkat}</span>
+                            {kelasNama}
                           </td>
                           <td className="py-3.5 px-4">
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
@@ -1199,7 +1246,7 @@ export default function SiswaView({
                 </div>
                 
                 <h3 className="font-bold text-sm mt-3">{viewingSiswa.nama}</h3>
-                <p className="text-[10px] text-emerald-100">NIS: {viewingSiswa.nis} | Kelas {db.kelas.find(k => k.id === viewingSiswa.kelasId)?.namaKelas || '-'}</p>
+                <p className="text-[10px] text-emerald-100">NIS: {viewingSiswa.nis} | Kelas {db.kelas.find(k => k.id === viewingSiswa.kelasId || k.namaKelas.toLowerCase().trim() === viewingSiswa.kelasId?.toLowerCase().trim())?.namaKelas || viewingSiswa.kelasId || '-'}</p>
                 
                 {/* Visual points tracker */}
                 {(() => {
@@ -1266,6 +1313,14 @@ export default function SiswaView({
                 >
                   Prestasi
                 </button>
+                <button 
+                  onClick={() => setActiveDetailTab('surat_bk')}
+                  className={`flex-1 py-2 px-3 border-b-2 text-center transition truncate ${
+                    activeDetailTab === 'surat_bk' ? 'border-emerald-600 text-emerald-600 bg-white font-bold' : 'border-transparent hover:bg-slate-100'
+                  }`}
+                >
+                  Surat BK
+                </button>
               </div>
 
               {/* Sub-tab Detail Displays */}
@@ -1280,6 +1335,16 @@ export default function SiswaView({
                       <div>
                         <p className="text-[10px] text-slate-400 uppercase font-semibold">NISN</p>
                         <p className="font-medium text-slate-700">{viewingSiswa.nisn || '-'}</p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-semibold">Tahun Masuk</p>
+                          <p className="font-medium text-slate-700">{viewingSiswa.tahunMasuk || '-'}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-semibold">Tahun Pelajaran</p>
+                          <p className="font-medium text-slate-700">{viewingSiswa.tahunPelajaran || db.tahunPelajaran.find(tp => tp.isActive)?.tahun || '2025/2026'}</p>
+                        </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
@@ -2067,6 +2132,17 @@ export default function SiswaView({
                       value={formSiswa.tahunMasuk || ''} 
                       onChange={(e) => setFormSiswa(prev => ({ ...prev, tahunMasuk: e.target.value }))}
                       className="p-2.5 border border-slate-200 rounded-xl w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Tahun Pelajaran <span className="text-rose-500">*</span></label>
+                    <input 
+                      type="text" 
+                      value={formSiswa.tahunPelajaran || ''} 
+                      onChange={(e) => setFormSiswa(prev => ({ ...prev, tahunPelajaran: e.target.value }))}
+                      className="p-2.5 border border-slate-200 rounded-xl w-full"
+                      placeholder="e.g., 2025/2026"
+                      required
                     />
                   </div>
                 </div>
@@ -2960,10 +3036,10 @@ export default function SiswaView({
                       <th className="bg-slate-150 text-slate-500 font-normal py-1 px-1.5 text-center border-b border-slate-300 w-10"></th>
                       {(() => {
                         let colCount = 0;
-                        if (spreadsheetCategory === 'all') colCount = 18;
-                        else if (spreadsheetCategory === 'biodata') colCount = 13;
+                        if (spreadsheetCategory === 'all') colCount = 19;
+                        else if (spreadsheetCategory === 'biodata') colCount = 14;
                         else if (spreadsheetCategory === 'orangtua') colCount = 13;
-                        else if (spreadsheetCategory === 'akademik') colCount = 6;
+                        else if (spreadsheetCategory === 'akademik') colCount = 7;
                         else if (spreadsheetCategory === 'kesehatan') colCount = 8;
                         else if (spreadsheetCategory === 'ekonomi') colCount = 8;
                         else if (spreadsheetCategory === 'psikologi') colCount = 7;
@@ -2997,7 +3073,7 @@ export default function SiswaView({
                           <th className="py-1.5 px-3 text-left font-bold text-slate-600 bg-slate-50/80">NISN</th>
                           <th className="py-1.5 px-3 text-left font-bold text-slate-600 bg-slate-50/80">Nama Siswa</th>
                           <th className="py-1.5 px-3 text-left font-bold text-slate-600 bg-slate-50/80">Kelas</th>
-                          <th className="py-1.5 px-3 text-left font-bold text-slate-600 bg-slate-50/80">Jurusan</th>
+                          <th className="py-1.5 px-3 text-left font-bold text-slate-600 bg-slate-50/80">Tahun Pelajaran</th>
                           <th className="py-1.5 px-3 text-left font-bold text-slate-600 bg-slate-50/80">Gender</th>
                           <th className="py-1.5 px-3 text-left font-bold text-slate-600 bg-slate-50/80">Penghasilan Orang Tua</th>
                           <th className="py-1.5 px-3 text-left font-bold text-slate-600 bg-slate-50/80">Nama Ayah</th>
@@ -3018,7 +3094,7 @@ export default function SiswaView({
                           <th className="py-1.5 px-3 text-left font-bold text-slate-600 bg-slate-50/80">NISN</th>
                           <th className="py-1.5 px-3 text-left font-bold text-slate-600 bg-slate-50/80">Nama Lengkap</th>
                           <th className="py-1.5 px-3 text-left font-bold text-slate-600 bg-slate-50/80">Kelas</th>
-                          <th className="py-1.5 px-3 text-left font-bold text-slate-600 bg-slate-50/80">Jurusan</th>
+                          <th className="py-1.5 px-3 text-left font-bold text-slate-600 bg-slate-50/80">Tahun Pelajaran</th>
                           <th className="py-1.5 px-3 text-left font-bold text-slate-600 bg-slate-50/80">Gender</th>
                           <th className="py-1.5 px-3 text-left font-bold text-slate-600 bg-slate-50/80">Tempat Lahir</th>
                           <th className="py-1.5 px-3 text-left font-bold text-slate-600 bg-slate-50/80">Tanggal Lahir</th>
@@ -3050,6 +3126,7 @@ export default function SiswaView({
                         <>
                           <th className="py-1.5 px-3 text-left font-bold text-slate-600 bg-slate-50/80">Nama Siswa</th>
                           <th className="py-1.5 px-3 text-left font-bold text-slate-600 bg-slate-50/80">Kelas</th>
+                          <th className="py-1.5 px-3 text-left font-bold text-slate-600 bg-slate-50/80">Tahun Pelajaran</th>
                           <th className="py-1.5 px-3 text-left font-bold text-slate-600 bg-slate-50/80">Rata-Rata Rapor</th>
                           <th className="py-1.5 px-3 text-left font-bold text-slate-600 bg-slate-50/80">Catatan Wali Kelas</th>
                           <th className="py-1.5 px-3 text-left font-bold text-slate-600 bg-slate-50/80">Poin Pelanggaran</th>
@@ -3131,7 +3208,7 @@ export default function SiswaView({
                                 <td className="py-1 px-3 text-left text-slate-500">{row.nisn}</td>
                                 <td className="py-1 px-3 text-left font-bold text-slate-800">{row.nama}</td>
                                 <td className="py-1 px-3 text-left font-bold text-emerald-700">{row.kelas}</td>
-                                <td className="py-1 px-3 text-left truncate max-w-[120px] text-slate-600">{row.jurusan}</td>
+                                <td className="py-1 px-3 text-left font-bold text-teal-700">{row.tahunPelajaran}</td>
                                 <td className="py-1 px-3 text-left text-slate-500">{row.gender}</td>
                                 <td className="py-1 px-3 text-left font-semibold text-teal-600">{row.penghasilan}</td>
                                 <td className="py-1 px-3 text-left text-slate-600">{row.namaAyah}</td>
@@ -3153,7 +3230,7 @@ export default function SiswaView({
                                 <td className="py-1 px-3 text-left text-slate-500">{row.nisn}</td>
                                 <td className="py-1 px-3 text-left font-bold text-slate-800">{row.nama}</td>
                                 <td className="py-1 px-3 text-left font-bold text-emerald-700">{row.kelas}</td>
-                                <td className="py-1 px-3 text-left text-slate-600">{row.jurusan}</td>
+                                <td className="py-1 px-3 text-left font-bold text-teal-700">{row.tahunPelajaran}</td>
                                 <td className="py-1 px-3 text-left text-slate-500">{row.gender}</td>
                                 <td className="py-1 px-3 text-left text-slate-600">{row.tempatLahir}</td>
                                 <td className="py-1 px-3 text-left text-slate-600">{row.tanggalLahir}</td>
@@ -3187,6 +3264,7 @@ export default function SiswaView({
                               <>
                                 <td className="py-1 px-3 text-left font-bold text-slate-800">{row.nama}</td>
                                 <td className="py-1 px-3 text-left font-bold text-emerald-700">{row.kelas}</td>
+                                <td className="py-1 px-3 text-left font-bold text-teal-700">{row.tahunPelajaran}</td>
                                 <td className="py-1 px-3 text-center font-bold text-blue-600 bg-blue-50/30">{row.rataRataRapor}</td>
                                 <td className="py-1 px-3 text-left text-slate-600 truncate max-w-[200px]" title={row.catatanWaliKelas}>{row.catatanWaliKelas}</td>
                                 <td className="py-1 px-3 text-center font-bold text-rose-600 bg-rose-50/30">{row.poinPelanggaran} Poin</td>

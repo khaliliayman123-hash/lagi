@@ -24,7 +24,6 @@ import {
   CatatanPerkembangan,
   TahunPelajaran,
   Kelas,
-  Jurusan,
   LogAktivitas,
   DatabaseState,
   Kehadiran,
@@ -109,6 +108,7 @@ const INITIAL_DATABASE: DatabaseState = {
       kelasId: 'kl-1',
       jurusanId: '',
       tahunMasuk: '2025',
+      tahunPelajaran: '2025/2026',
     },
     {
       id: 'sis-2',
@@ -129,6 +129,7 @@ const INITIAL_DATABASE: DatabaseState = {
       kelasId: 'kl-2',
       jurusanId: '',
       tahunMasuk: '2025',
+      tahunPelajaran: '2025/2026',
     },
     {
       id: 'sis-3',
@@ -149,6 +150,7 @@ const INITIAL_DATABASE: DatabaseState = {
       kelasId: 'kl-12',
       jurusanId: '',
       tahunMasuk: '2024',
+      tahunPelajaran: '2024/2025',
     },
     {
       id: 'sis-4',
@@ -169,6 +171,7 @@ const INITIAL_DATABASE: DatabaseState = {
       kelasId: 'kl-13',
       jurusanId: '',
       tahunMasuk: '2023',
+      tahunPelajaran: '2023/2024',
     },
   ],
   orangTua: [
@@ -325,8 +328,8 @@ const INITIAL_DATABASE: DatabaseState = {
     { id: 'kon-1', nomorKonseling: 'BK-2026-001', siswaId: 'sis-3', tanggal: '2026-06-18', jenis: 'Individu', guruBkId: 'usr-2', permasalahan: 'Merokok di area sekolah dan kedapatan membawa rokok.', analisis: 'Siswa mengalami tekanan pergaulan luar sekolah dan merasa stres karena masalah ekonomi keluarga.', solusi: 'Melakukan konseling relaksasi, menyepakati kontrak perilaku untuk berhenti merokok, dan menghubungkan ke program beasiswa sekolah.', hasil: 'Siswa kooperatif, berjanji mengurangi rokok, dan bersedia dipantau perkembangannya.', tindakLanjut: 'Pemantauan berkala bersama Wali Kelas.' },
   ],
   asesmen: [
-    { id: 'ase-1', siswaId: 'sis-1', akpd: 'Tinggi pemahaman diri, sedang penyesuaian sosial', dcm: 'Masalah ekonomi ringan', aum: 'Hambatan belajar ringan', iq: 125, bakat: 'Komputasi, Logika', minat: 'Sains, Teknologi' },
-    { id: 'ase-2', siswaId: 'sis-4', akpd: 'Tinggi minat seni, tinggi kemampuan karir', dcm: 'Keluarga harmonis', aum: 'Tidak ada masalah berarti', iq: 118, bakat: 'Artistik, Komunikasi', minat: 'Seni Kreatif, Media' },
+    { id: 'ase-1', siswaId: 'sis-1', akpd: 'Tinggi pemahaman diri, sedang penyesuaian sosial', dcm: 'Visual & Auditori', aum: 'Hambatan belajar ringan', iq: 125, bakat: 'Komputasi, Logika', minat: 'Sains, Teknologi' },
+    { id: 'ase-2', siswaId: 'sis-4', akpd: 'Tinggi minat seni, tinggi kemampuan karir', dcm: 'Kinestetik', aum: 'Tidak ada masalah berarti', iq: 118, bakat: 'Artistik, Komunikasi', minat: 'Seni Kreatif, Media' },
   ],
   homeVisit: [
     { id: 'hv-1', siswaId: 'sis-3', tanggal: '2026-06-19', tujuan: 'Mengetahui kondisi lingkungan rumah dan dukungan orang tua terkait kasus pelanggaran merokok.', hasil: 'Orang tua menyambut baik dan berjanji akan memperketat pengawasan di rumah, serta berterima kasih atas informasi dari sekolah.' },
@@ -553,21 +556,24 @@ export function sanitizeDatabaseState(parsed: any): { sanitized: DatabaseState; 
     return p;
   });
 
-  // If jurusan is not empty, clear it
-  if (parsed.jurusan && parsed.jurusan.length > 0) {
-    parsed.jurusan = [];
-    migrated = true;
-  }
+  // If jurusan is not empty, clear it (only in offline mode, so we don't wipe out real sheet data)
+  const activeGasUrl = (parsed?.config?.gasApiUrl || currentDatabase?.config?.gasApiUrl || '').toString().trim();
+  if (!activeGasUrl) {
+    if (parsed.jurusan && parsed.jurusan.length > 0) {
+      parsed.jurusan = [];
+      migrated = true;
+    }
 
-  // Check if classes are high school (e.g., has 'RPL', 'TKJ', 'DKV') or if they don't match our new grades (33 rombel)
-  const hasHighSchoolClasses = parsed.kelas.some((k: any) => 
-    k && k.namaKelas && (k.namaKelas.includes('RPL') || k.namaKelas.includes('TKJ') || k.namaKelas.includes('DKV'))
-  );
-  if (hasHighSchoolClasses || parsed.kelas.length < 33 || parsed.siswa.length === 0) {
-    parsed.kelas = [...INITIAL_DATABASE.kelas];
-    parsed.siswa = [...INITIAL_DATABASE.siswa];
-    parsed.orangTua = [...INITIAL_DATABASE.orangTua];
-    migrated = true;
+    // Check if classes are high school (e.g., has 'RPL', 'TKJ', 'DKV') or if they don't match our new grades (33 rombel)
+    const hasHighSchoolClasses = parsed.kelas.some((k: any) => 
+      k && k.namaKelas && (k.namaKelas.includes('RPL') || k.namaKelas.includes('TKJ') || k.namaKelas.includes('DKV'))
+    );
+    if (hasHighSchoolClasses || parsed.kelas.length < 33 || parsed.siswa.length === 0) {
+      parsed.kelas = [...INITIAL_DATABASE.kelas];
+      parsed.siswa = [...INITIAL_DATABASE.siswa];
+      parsed.orangTua = [...INITIAL_DATABASE.orangTua];
+      migrated = true;
+    }
   }
 
   // Double check that all mock siswa records have expanded parent fields initialized
@@ -895,8 +901,11 @@ export const apiService = {
   },
 
   // GET Dynamic Data (Combines offline state + optional remote load)
-  getData: async (force: boolean = false): Promise<DatabaseState> => {
+  getData: async (force: boolean = false, localOnly: boolean = false): Promise<DatabaseState> => {
     const localDb = loadLocalDatabase();
+    if (localOnly) {
+      return localDb;
+    }
     if (getGasApiUrl()) {
       const res = await apiCall<DatabaseState>('getFullDatabase');
       if (res.success && res.data) {
@@ -994,10 +1003,12 @@ export const apiService = {
       });
       if (remoteRes.success) {
         return { success: true, message: 'Siswa berhasil disimpan secara online di Google Sheets.' };
+      } else {
+        return { success: false, message: `Gagal menyimpan data ke Google Sheets.\n\nDetail Error: ${remoteRes.message || 'Koneksi ditolak oleh Google Apps Script.'}\n\nLangkah Solusi:\n1. Buka editor Google Apps Script Anda.\n2. Pastikan file 'Code.gs' dan 'Siswa.gs' sudah sesuai dengan kode terbaru.\n3. Anda WAJIB membuat penerapan baru: Klik "Terapkan" -> "Penerapan baru" -> Pilih Jenis "Aplikasi Web" -> Set akses "Siapa saja" -> Klik "Terapkan".\n4. Salin URL Aplikasi Web baru tersebut dan simpan di menu Pengaturan aplikasi.` };
       }
     }
 
-    return { success: true, message: `Siswa berhasil disimpan secara offline.${getGasApiUrl() ? ' Gagal mensinkronisasikan ke awan.' : ''}` };
+    return { success: true, message: 'Siswa berhasil disimpan secara offline.' };
   },
 
   deleteSiswa: async (siswaId: string): Promise<{ success: boolean; message: string }> => {
@@ -1023,9 +1034,12 @@ export const apiService = {
     if (getGasApiUrl()) {
       const res = await apiCall('deleteSiswa', { id: siswaId });
       if (res.success) {
-        return { success: true, message: 'Siswa berhasil dihapus secara online.' };
+        return { success: true, message: 'Siswa berhasil dihapus secara online di Google Sheets.' };
       } else {
-        throw new Error(res.message || 'Gagal menghapus siswa di Google Sheets.');
+        return { 
+          success: false, 
+          message: `Gagal menghapus siswa dari Google Sheets secara permanen.\n\nDetail Error: ${res.message || 'Koneksi ditolak oleh Google Apps Script.'}\n\nLangkah Solusi:\n1. Buka editor Google Apps Script Anda.\n2. Pastikan file 'Code.gs' dan 'Siswa.gs' sudah sesuai dengan kode terbaru.\n3. Anda WAJIB membuat penerapan baru: Klik "Terapkan" -> "Penerapan baru" -> Pilih Jenis "Aplikasi Web" -> Set akses "Siapa saja" -> Klik "Terapkan".\n4. Salin URL Aplikasi Web baru tersebut dan simpan di menu Pengaturan aplikasi.` 
+        };
       }
     }
     return { success: true, message: 'Siswa berhasil dihapus secara lokal.' };
@@ -1078,27 +1092,6 @@ export const apiService = {
     saveLocalDatabase(db);
     if (getGasApiUrl()) await apiCall('deleteKelas', { id });
     return { success: true, message: 'Kelas berhasil dihapus.' };
-  },
-
-  // 4. JURUSAN CRUD
-  saveJurusan: async (jr: Jurusan, isNew: boolean): Promise<{ success: boolean; message: string }> => {
-    const db = loadLocalDatabase();
-    if (isNew) {
-      db.jurusan.push(jr);
-    } else {
-      db.jurusan = db.jurusan.map(item => item.id === jr.id ? jr : item);
-    }
-    saveLocalDatabase(db);
-    if (getGasApiUrl()) await apiCall('saveJurusan', { jr, isNew });
-    return { success: true, message: 'Jurusan berhasil disimpan.' };
-  },
-
-  deleteJurusan: async (id: string): Promise<{ success: boolean; message: string }> => {
-    const db = loadLocalDatabase();
-    db.jurusan = db.jurusan.filter(item => item.id !== id);
-    saveLocalDatabase(db);
-    if (getGasApiUrl()) await apiCall('deleteJurusan', { id });
-    return { success: true, message: 'Jurusan berhasil dihapus.' };
   },
 
   // 5. USER CRUD (Koordinator BK / Users)

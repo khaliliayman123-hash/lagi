@@ -133,7 +133,7 @@ export default function DashboardView({ db, currentUser, onNavigateToSiswa }: Da
             <span className="text-slate-400 text-xs font-medium uppercase tracking-wider">Total Rombel / Kelas</span>
             <p className="text-2xl font-bold text-slate-800">{totalKelas}</p>
             <span className="text-blue-600 text-xs flex items-center font-medium">
-              <CheckCircle2 size={12} className="mr-1" /> Semua Jurusan
+              <CheckCircle2 size={12} className="mr-1" /> Aktif
             </span>
           </div>
           <div className="bg-blue-50 text-blue-600 p-3 rounded-xl">
@@ -370,7 +370,7 @@ export default function DashboardView({ db, currentUser, onNavigateToSiswa }: Da
               {studentsWithNoAssessments.length > 0 && (
                 <div className="space-y-2 pt-2 border-t border-slate-100">
                   <span className="text-[10px] uppercase font-bold text-amber-600 tracking-wider flex items-center gap-1">
-                    <Activity size={12} /> Siswa Belum Diasesmen (AKPD / DCM)
+                    <Activity size={12} /> Siswa Belum Diasesmen (AKPD / Gaya Belajar)
                   </span>
                   <div className="p-3 bg-amber-50/50 border border-amber-100/30 rounded-xl space-y-1.5">
                     {studentsWithNoAssessments.slice(0, 3).map(s => (

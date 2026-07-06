@@ -84,14 +84,6 @@ function handleRequest(e) {
         responseData = deleteEntity(db, "Kelas", postData.id);
         break;
         
-      case "saveJurusan":
-        responseData = saveEntity(db, "Jurusan", postData.jr, postData.isNew);
-        break;
-        
-      case "deleteJurusan":
-        responseData = deleteEntity(db, "Jurusan", postData.id);
-        break;
-        
       case "saveUser":
         responseData = saveUser(db, postData.user, postData.isNew);
         break;
