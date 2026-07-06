@@ -34,7 +34,7 @@ const LOCAL_STORAGE_KEY = 'hds_bk_database_v1';
 // Seed data to make the dashboard charts and widgets look spectacular and complete right away
 const INITIAL_DATABASE: DatabaseState = {
   config: {
-    gasApiUrl: '',
+    gasApiUrl: 'https://script.google.com/macros/s/AKfycbz8ooxfXeA6q9ozWdRFLgSEFnfpMkm1vYKRdZDPglP9_tNpE7dQbVSTiYmlP3AOCh-j/exec',
   },
   users: [
     { id: 'usr-1', username: 'admin', nama: 'Holfi Aulia, S.Pd', role: UserRole.ADMIN, email: 'holfi.aulia@sekolah.sch.id', isActive: true },
@@ -366,13 +366,13 @@ export function sanitizeDatabaseState(parsed: any): { sanitized: DatabaseState; 
 
   // Ensure config block is present
   if (!parsed.config || typeof parsed.config !== 'object') {
-    parsed.config = { gasApiUrl: '', spreadsheetId: '' };
+    parsed.config = { gasApiUrl: 'https://script.google.com/macros/s/AKfycbz8ooxfXeA6q9ozWdRFLgSEFnfpMkm1vYKRdZDPglP9_tNpE7dQbVSTiYmlP3AOCh-j/exec', spreadsheetId: '' };
     migrated = true;
   } else {
     const originalGas = parsed.config.gasApiUrl;
     const originalSpreadsheet = parsed.config.spreadsheetId;
     parsed.config = {
-      gasApiUrl: (parsed.config.gasApiUrl || '').toString().trim(),
+      gasApiUrl: (parsed.config.gasApiUrl && parsed.config.gasApiUrl.trim() !== '' ? parsed.config.gasApiUrl : 'https://script.google.com/macros/s/AKfycbz8ooxfXeA6q9ozWdRFLgSEFnfpMkm1vYKRdZDPglP9_tNpE7dQbVSTiYmlP3AOCh-j/exec').toString().trim(),
       spreadsheetId: (parsed.config.spreadsheetId || '').toString().trim()
     };
     if (parsed.config.gasApiUrl !== originalGas || parsed.config.spreadsheetId !== originalSpreadsheet) {
@@ -638,7 +638,7 @@ function saveLocalDatabase(db: DatabaseState) {
 }
 
 export const getGasApiUrl = (): string => {
-  return currentDatabase.config.gasApiUrl || ((import.meta as any).env?.VITE_GAS_API_URL as string) || '';
+  return currentDatabase.config.gasApiUrl || ((import.meta as any).env?.VITE_GAS_API_URL as string) || 'https://script.google.com/macros/s/AKfycbz8ooxfXeA6q9ozWdRFLgSEFnfpMkm1vYKRdZDPglP9_tNpE7dQbVSTiYmlP3AOCh-j/exec';
 };
 
 export const setGasApiUrl = (url: string) => {
