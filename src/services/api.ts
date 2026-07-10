@@ -346,7 +346,7 @@ const INITIAL_DATABASE: DatabaseState = {
   ],
   logAktivitas: [
     { id: 'log-1', timestamp: '2026-06-28T09:00:00Z', userId: 'usr-1', namaUser: 'Holfi Aulia, S.Pd', role: 'Admin', aktivitas: 'Login', detail: 'Berhasil masuk ke dalam sistem.' },
-    { id: 'log-2', timestamp: '2026-06-28T09:15:00Z', userId: 'usr-2', namaUser: 'Sulaiman, S.Psi., MM', role: 'Koordinator BK', aktivitas: 'Tambah Konseling', detail: 'Membuat rekaman konseling individu untuk Candra Wijaya.' },
+    { id: 'log-2', timestamp: '2026-06-28T09:15:00Z', userId: 'usr-2', namaUser: 'Sulaiman, S.Psi., MM', role: 'Guru BK', aktivitas: 'Tambah Konseling', detail: 'Membuat rekaman konseling individu untuk Candra Wijaya.' },
   ],
   kehadiran: [
     { id: 'att-1', siswaId: 'sis-1', mingguKe: 'Minggu 1', bulan: 'Juli', tahun: '2026', hadir: 5, sakit: 0, izin: 0, alfa: 0, keterangan: 'Hadir penuh' },
@@ -366,14 +366,17 @@ export function sanitizeDatabaseState(parsed: any): { sanitized: DatabaseState; 
 
   // Ensure config block is present
   if (!parsed.config || typeof parsed.config !== 'object') {
-    parsed.config = { gasApiUrl: 'https://script.google.com/macros/s/AKfycbz8ooxfXeA6q9ozWdRFLgSEFnfpMkm1vYKRdZDPglP9_tNpE7dQbVSTiYmlP3AOCh-j/exec', spreadsheetId: '' };
+    parsed.config = { 
+      gasApiUrl: 'https://script.google.com/macros/s/AKfycbz8ooxfXeA6q9ozWdRFLgSEFnfpMkm1vYKRdZDPglP9_tNpE7dQbVSTiYmlP3AOCh-j/exec', 
+      spreadsheetId: ((import.meta as any).env?.VITE_SPREADSHEET_ID as string) || '' 
+    };
     migrated = true;
   } else {
     const originalGas = parsed.config.gasApiUrl;
     const originalSpreadsheet = parsed.config.spreadsheetId;
     parsed.config = {
       gasApiUrl: (parsed.config.gasApiUrl && parsed.config.gasApiUrl.trim() !== '' ? parsed.config.gasApiUrl : 'https://script.google.com/macros/s/AKfycbz8ooxfXeA6q9ozWdRFLgSEFnfpMkm1vYKRdZDPglP9_tNpE7dQbVSTiYmlP3AOCh-j/exec').toString().trim(),
-      spreadsheetId: (parsed.config.spreadsheetId || '').toString().trim()
+      spreadsheetId: (parsed.config.spreadsheetId || ((import.meta as any).env?.VITE_SPREADSHEET_ID as string) || '').toString().trim()
     };
     if (parsed.config.gasApiUrl !== originalGas || parsed.config.spreadsheetId !== originalSpreadsheet) {
       migrated = true;
@@ -511,7 +514,7 @@ export function sanitizeDatabaseState(parsed: any): { sanitized: DatabaseState; 
     if (!l) return l;
     if (l.namaUser === 'Siti Rahma, S.Pd., M.Psi.' || l.namaUser === 'Koordinator BK Sulaiman, S.Psi.,MM' || l.namaUser === 'Koordinator BK Sulaiman, S.Psi., MM' || l.namaUser === 'Sulaiman, S.Psi.,MM' || l.namaUser === 'Sulaiman, S.Psi., MM' || l.namaUser === 'Sulaiman, S.Psi,.MM') {
       l.namaUser = 'Sulaiman, S.Psi,.MM';
-      l.role = 'Koordinator BK';
+      l.role = 'Guru BK';
       migrated = true;
     }
     if (l.namaUser === 'Budi Santoso, S.Kom.') {
@@ -648,7 +651,7 @@ export const setGasApiUrl = (url: string) => {
 };
 
 export const getSpreadsheetId = (): string => {
-  return currentDatabase.config.spreadsheetId || '';
+  return currentDatabase.config.spreadsheetId || ((import.meta as any).env?.VITE_SPREADSHEET_ID as string) || '';
 };
 
 export const setSpreadsheetId = (id: string) => {
@@ -812,92 +815,154 @@ export const apiService = {
   },
 
   // Auth / Login Simulation
-  login: async (username: string, password?: string): Promise<{ success: boolean; user?: User; message?: string }> => {
+  login: async (username: string, password?: string, isStudentPortal: boolean = false): Promise<{ success: boolean; user?: User; message?: string }> => {
     const db = loadLocalDatabase();
     
-    // 1. Check in standard users (with extremely robust status checks for Boolean/String)
-    const user = db.users.find((u) => {
-      const uNameStr = (u.username || '').toString().toLowerCase();
-      const inputNameStr = (username || '').toString().toLowerCase();
-      
-      // Determine if active (can be Boolean true or String "true"/"TRUE", or default true if undefined)
-      const isActive = u.isActive === undefined || 
-                       u.isActive === true || 
-                       String(u.isActive).toLowerCase() === 'true';
-                       
-      return uNameStr === inputNameStr && isActive;
-    });
-
-    if (user) {
-      if (!password) {
-        return { success: false, message: 'Password wajib diisi.' };
-      }
-      
-      const roleStr = (user.role || '').toString().toLowerCase();
-      const isAdmin = roleStr === 'admin' || roleStr === UserRole.ADMIN.toLowerCase();
-      const isGuruBk = roleStr === 'gurubk' || roleStr === 'koordinator bk' || roleStr === UserRole.GURU_BK.toLowerCase();
-
-      if (isAdmin) {
-        if (password !== 'admin123') {
-          return { success: false, message: 'Password Admin salah.' };
-        }
-      } else if (isGuruBk) {
-        if (password !== 'bk123') {
-          return { success: false, message: 'Password Koordinator BK salah.' };
-        }
-      } else {
-        // Fallback for any other user role
-        if (password !== '123') {
-          return { success: false, message: 'Password salah.' };
-        }
-      }
-
-      apiService.addLog(user.id, user.nama, user.role, 'Login', 'Siswa, guru, atau staf berhasil masuk.');
-      return { success: true, user };
-    }
-
-    // 2. Check in student database (by NIS, NISN or Name)
-    const s = db.siswa.find((student) => {
+    if (!isStudentPortal) {
       const uLower = (username || '').toString().trim().toLowerCase();
-      const sNis = student.nis ? student.nis.toString().trim().toLowerCase() : '';
-      const sNisn = student.nisn ? student.nisn.toString().trim().toLowerCase() : '';
-      const sNama = student.nama ? student.nama.toString().trim().toLowerCase() : '';
-      return sNis === uLower || sNisn === uLower || sNama === uLower;
-    });
+      const pLower = (password || '').toString().trim();
 
-    if (s) {
-      if (!password) {
-        return { success: false, message: 'Password wajib diisi.' };
+      // Check for Wali Kelas
+      if (uLower === 'wali kelas') {
+        if (!password) {
+          return { success: false, message: 'Password wajib diisi.' };
+        }
+        const match = pLower.match(/^walas([789])([1-9]|1[01])$/);
+        if (!match) {
+          return { success: false, message: 'Password Wali Kelas tidak valid. Contoh format: walas71 atau walas911' };
+        }
+        const grade = parseInt(match[1]);
+        const classNum = parseInt(match[2]);
+        let classId = '';
+        if (grade === 7) classId = `kl-${classNum}`;
+        else if (grade === 8) classId = `kl-${11 + classNum}`;
+        else if (grade === 9) classId = `kl-${22 + classNum}`;
+
+        const kl = db.kelas.find(k => k.id === classId);
+        const kelasName = kl ? kl.namaKelas : `Kelas ${grade}-${classNum}`;
+
+        const waliKelasUser: User = {
+          id: `walas-${classId}`,
+          username: 'Wali Kelas',
+          nama: `Wali Kelas ${kelasName.replace('Kelas ', '')}`,
+          role: UserRole.WALI_KELAS,
+          email: `walas.${classId}@sekolah.sch.id`,
+          isActive: true,
+          kelasId: classId
+        };
+        apiService.addLog(waliKelasUser.id, waliKelasUser.nama, waliKelasUser.role, 'Login', `Wali kelas ${kelasName} berhasil masuk.`);
+        return { success: true, user: waliKelasUser };
       }
 
-      // Password must match student's NIS, NISN or Nama (case-insensitive)
-      const pLower = (password || '').toString().trim().toLowerCase();
-      const sNis = s.nis ? s.nis.toString().trim().toLowerCase() : '';
-      const sNisn = s.nisn ? s.nisn.toString().trim().toLowerCase() : '';
-      const sNama = s.nama ? s.nama.toString().trim().toLowerCase() : '';
-
-      const validPassword = 
-        pLower === sNis ||
-        pLower === sNisn || 
-        pLower === sNama;
-
-      if (!validPassword) {
-        return { success: false, message: 'Password salah. Masukkan NIS, NISN, atau nama lengkap Anda.' };
+      // Check for Guru Piket
+      if (uLower === 'guru piket') {
+        if (!password) {
+          return { success: false, message: 'Password wajib diisi.' };
+        }
+        if (pLower !== 'piket123') {
+          return { success: false, message: 'Password Guru Piket salah.' };
+        }
+        const piketUser: User = {
+          id: 'usr-piket',
+          username: 'guru piket',
+          nama: 'Guru Piket',
+          role: UserRole.GURU_PIKET,
+          email: 'piket@sekolah.sch.id',
+          isActive: true
+        };
+        apiService.addLog(piketUser.id, piketUser.nama, piketUser.role, 'Login', 'Guru Piket berhasil masuk.');
+        return { success: true, user: piketUser };
       }
 
-      const studentUser: User = {
-        id: s.id,
-        username: s.nis ? s.nis.toString() : s.id,
-        nama: s.nama,
-        role: UserRole.SISWA,
-        email: s.email || `${s.nis || s.id}@student.sch.id`,
-        isActive: true
-      };
-      apiService.addLog(s.id, s.nama, UserRole.SISWA, 'Login', 'Siswa berhasil login menggunakan NIS/NISN.');
-      return { success: true, user: studentUser };
+      // 1. Check in standard users (with extremely robust status checks for Boolean/String)
+      const user = db.users.find((u) => {
+        const uNameStr = (u.username || '').toString().toLowerCase();
+        const inputNameStr = (username || '').toString().toLowerCase();
+        
+        // Determine if active (can be Boolean true or String "true"/"TRUE", or default true if undefined)
+        const isActive = u.isActive === undefined || 
+                         u.isActive === true || 
+                         String(u.isActive).toLowerCase() === 'true';
+                          
+        return uNameStr === inputNameStr && isActive;
+      });
+
+      if (user) {
+        if (!password) {
+          return { success: false, message: 'Password wajib diisi.' };
+        }
+        
+        const roleStr = (user.role || '').toString().toLowerCase();
+        const isAdmin = roleStr === 'admin' || roleStr === UserRole.ADMIN.toLowerCase();
+        const isGuruBk = roleStr === 'gurubk' || roleStr === 'guru bk' || roleStr === UserRole.GURU_BK.toLowerCase();
+
+        if (isAdmin) {
+          if (password !== 'admin123') {
+            return { success: false, message: 'Password Admin salah.' };
+          }
+        } else if (isGuruBk) {
+          if (password !== 'bk123') {
+            return { success: false, message: 'Password Guru BK salah.' };
+          }
+        } else {
+          // Fallback for any other user role
+          if (password !== '123') {
+            return { success: false, message: 'Password salah.' };
+          }
+        }
+
+        apiService.addLog(user.id, user.nama, user.role, 'Login', 'Siswa, guru, atau staf berhasil masuk.');
+        return { success: true, user };
+      }
     }
 
-    return { success: false, message: 'Username / NIS tidak ditemukan.' };
+    if (isStudentPortal) {
+      // 2. Check in student database (by NIS, NISN or Name)
+      const s = db.siswa.find((student) => {
+        const uLower = (username || '').toString().trim().toLowerCase();
+        const sNis = student.nis ? student.nis.toString().trim().toLowerCase() : '';
+        const sNisn = student.nisn ? student.nisn.toString().trim().toLowerCase() : '';
+        const sNama = student.nama ? student.nama.toString().trim().toLowerCase() : '';
+        return sNis === uLower || sNisn === uLower || sNama === uLower;
+      });
+
+      if (s) {
+        if (!password) {
+          return { success: false, message: 'Password wajib diisi.' };
+        }
+
+        // Password must match student's NIS, NISN or Nama (case-insensitive)
+        const pLower = (password || '').toString().trim().toLowerCase();
+        const sNis = s.nis ? s.nis.toString().trim().toLowerCase() : '';
+        const sNisn = s.nisn ? s.nisn.toString().trim().toLowerCase() : '';
+        const sNama = s.nama ? s.nama.toString().trim().toLowerCase() : '';
+
+        const validPassword = 
+          pLower === sNis ||
+          pLower === sNisn || 
+          pLower === sNama;
+
+        if (!validPassword) {
+          return { success: false, message: 'Password salah. Masukkan NIS, NISN, atau nama lengkap Anda.' };
+        }
+
+        const studentUser: User = {
+          id: s.id,
+          username: s.nis ? s.nis.toString() : s.id,
+          nama: s.nama,
+          role: UserRole.SISWA,
+          email: s.email || `${s.nis || s.id}@student.sch.id`,
+          isActive: true
+        };
+        apiService.addLog(s.id, s.nama, UserRole.SISWA, 'Login', 'Siswa berhasil login menggunakan NIS/NISN.');
+        return { success: true, user: studentUser };
+      }
+    }
+
+    if (isStudentPortal) {
+      return { success: false, message: 'Siswa tidak ditemukan atau belum terdaftar.' };
+    }
+    return { success: false, message: 'Username tidak ditemukan.' };
   },
 
   // GET Dynamic Data (Combines offline state + optional remote load)

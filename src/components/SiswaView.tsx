@@ -73,6 +73,7 @@ interface SiswaViewProps {
   preSelectedSubTab?: string;
   onSaveSurat?: (s: Surat, isNew: boolean) => Promise<boolean>;
   onDeleteSurat?: (id: string) => Promise<boolean>;
+  preSelectedKelasId?: string;
 }
 
 export default function SiswaView({ 
@@ -86,7 +87,8 @@ export default function SiswaView({
   preSelectedSiswaId,
   preSelectedSubTab,
   onSaveSurat,
-  onDeleteSurat
+  onDeleteSurat,
+  preSelectedKelasId
 }: SiswaViewProps) {
   
   const canModify = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.GURU_BK;
@@ -112,8 +114,19 @@ export default function SiswaView({
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedKelas, setSelectedKelas] = useState('All');
+  const [selectedKelas, setSelectedKelas] = useState(preSelectedKelasId || 'All');
   const [selectedGender, setSelectedGender] = useState('All');
+
+  // Sync selectedKelas with preSelectedKelasId from sidebar
+  useEffect(() => {
+    if (preSelectedKelasId) {
+      setSelectedKelas(preSelectedKelasId);
+      setViewingSiswa(null); // Clear selected student detail overlay to see the list of that class
+      setCurrentPage(1); // Reset to page 1
+    } else {
+      setSelectedKelas('All');
+    }
+  }, [preSelectedKelasId]);
   
   // Sorting State
   const [sortBy, setSortBy] = useState<'nama' | 'nis' | 'kelas'>('nama');
@@ -136,6 +149,19 @@ export default function SiswaView({
       if (mySiswa) setViewingSiswa(mySiswa);
     }
   }, [currentUser.id, db.siswa, isStudent]);
+
+  useEffect(() => {
+    if (preSelectedSiswaId) {
+      const found = db.siswa.find(s => s.id === preSelectedSiswaId);
+      if (found) {
+        setViewingSiswa(found);
+        if (preSelectedSubTab) {
+          setActiveDetailTab(preSelectedSubTab);
+        }
+      }
+    }
+  }, [preSelectedSiswaId, preSelectedSubTab, db.siswa]);
+
   const [activeDetailTab, setActiveDetailTab] = useState<string>(preSelectedSubTab || 'bio');
   
   // CRUD Form State
@@ -533,7 +559,7 @@ export default function SiswaView({
 
   // Open Editor for ADD or EDIT
   const openSiswaEditor = (siswa: Siswa | null) => {
-    if (!canModify) return;
+    if (!canModify && (!isStudent || !siswa || siswa.id !== currentUser.id)) return;
 
     if (siswa) {
       // Load current student data pack
@@ -719,9 +745,9 @@ export default function SiswaView({
   const filteredStudents = useMemo(() => {
     return db.siswa
       .filter((s) => {
-        const matchesSearch = s.nama.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                              s.nis.includes(searchQuery) || 
-                              s.nisn.includes(searchQuery);
+        const matchesSearch = (s.nama || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+                              String(s.nis || '').includes(searchQuery) || 
+                              String(s.nisn || '').includes(searchQuery);
         const matchesKelas = selectedKelas === 'All' || s.kelasId === selectedKelas;
         const matchesGender = selectedGender === 'All' || s.jenisKelamin === selectedGender;
         return matchesSearch && matchesKelas && matchesGender;
@@ -1075,7 +1101,8 @@ export default function SiswaView({
                 <select 
                   value={selectedKelas} 
                   onChange={(e) => { setSelectedKelas(e.target.value); setCurrentPage(1); }}
-                  className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs w-full focus:outline-none focus:border-emerald-500"
+                  className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs w-full focus:outline-none focus:border-emerald-500 disabled:bg-slate-50 disabled:text-slate-400"
+                  disabled={!!preSelectedKelasId}
                 >
                   <option value="All">Semua Kelas</option>
                   {db.kelas.map(k => <option key={k.id} value={k.id}>{k.namaKelas}</option>)}
@@ -1228,12 +1255,20 @@ export default function SiswaView({
             <div className="flex flex-col h-full">
               {/* Cover profile header */}
               <div className="bg-gradient-to-br from-emerald-500 to-teal-600 p-5 text-white flex flex-col items-center text-center relative">
-                {!isStudent && (
+                {!isStudent ? (
                   <button 
                     onClick={() => setViewingSiswa(null)}
                     className="absolute right-3 top-3 p-1.5 bg-white/10 hover:bg-white/20 rounded-full transition text-white"
                   >
                     <X size={16} />
+                  </button>
+                ) : (
+                  <button 
+                    type="button"
+                    onClick={() => openSiswaEditor(viewingSiswa)}
+                    className="absolute right-3 top-3 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-xl transition text-white font-bold text-[10px] flex items-center gap-1.5 shadow-sm hover:scale-105 animate-fade-in"
+                  >
+                    <Edit2 size={11} /> Ubah Data
                   </button>
                 )}
                 
@@ -1975,9 +2010,9 @@ export default function SiswaView({
                         type="text" 
                         value={formSiswa.nis || ''} 
                         onChange={(e) => setFormSiswa(prev => ({ ...prev, nis: e.target.value }))}
-                        className="p-2.5 border border-slate-200 rounded-xl w-full"
+                        className="p-2.5 border border-slate-200 rounded-xl w-full font-mono disabled:bg-slate-50 disabled:text-slate-500"
                         required
-                        disabled={!!editingSiswaId}
+                        disabled={!!editingSiswaId || isStudent}
                       />
                     </div>
                     <div>
@@ -1986,8 +2021,9 @@ export default function SiswaView({
                         type="text" 
                         value={formSiswa.nisn || ''} 
                         onChange={(e) => setFormSiswa(prev => ({ ...prev, nisn: e.target.value }))}
-                        className="p-2.5 border border-slate-200 rounded-xl w-full"
+                        className="p-2.5 border border-slate-200 rounded-xl w-full font-mono disabled:bg-slate-50 disabled:text-slate-500"
                         required
+                        disabled={isStudent}
                       />
                     </div>
                     <div className="sm:col-span-2">
@@ -1996,8 +2032,9 @@ export default function SiswaView({
                         type="text" 
                         value={formSiswa.nama || ''} 
                         onChange={(e) => setFormSiswa(prev => ({ ...prev, nama: e.target.value }))}
-                        className="p-2.5 border border-slate-200 rounded-xl w-full capitalize"
+                        className="p-2.5 border border-slate-200 rounded-xl w-full capitalize disabled:bg-slate-50 disabled:text-slate-500"
                         required
+                        disabled={isStudent}
                       />
                     </div>
                     <div className="sm:col-span-2">
@@ -2005,8 +2042,9 @@ export default function SiswaView({
                       <select 
                         value={formSiswa.kelasId || ''} 
                         onChange={(e) => setFormSiswa(prev => ({ ...prev, kelasId: e.target.value }))}
-                        className="p-2.5 border border-slate-200 bg-white rounded-xl w-full"
+                        className="p-2.5 border border-slate-200 bg-white rounded-xl w-full disabled:bg-slate-50 disabled:text-slate-500"
                         required
+                        disabled={isStudent}
                       >
                         {db.kelas.map(k => <option key={k.id} value={k.id}>{k.namaKelas}</option>)}
                       </select>
@@ -2131,7 +2169,8 @@ export default function SiswaView({
                       type="text" 
                       value={formSiswa.tahunMasuk || ''} 
                       onChange={(e) => setFormSiswa(prev => ({ ...prev, tahunMasuk: e.target.value }))}
-                      className="p-2.5 border border-slate-200 rounded-xl w-full"
+                      className="p-2.5 border border-slate-200 rounded-xl w-full disabled:bg-slate-50 disabled:text-slate-500"
+                      disabled={isStudent}
                     />
                   </div>
                   <div>
@@ -2140,9 +2179,10 @@ export default function SiswaView({
                       type="text" 
                       value={formSiswa.tahunPelajaran || ''} 
                       onChange={(e) => setFormSiswa(prev => ({ ...prev, tahunPelajaran: e.target.value }))}
-                      className="p-2.5 border border-slate-200 rounded-xl w-full"
+                      className="p-2.5 border border-slate-200 rounded-xl w-full disabled:bg-slate-50 disabled:text-slate-500"
                       placeholder="e.g., 2025/2026"
                       required
+                      disabled={isStudent}
                     />
                   </div>
                 </div>
@@ -2688,7 +2728,8 @@ export default function SiswaView({
                         type="text" 
                         value={formAkademik.semester || '1'} 
                         onChange={(e) => setFormAkademik(prev => ({ ...prev, semester: e.target.value }))}
-                        className="p-2 border border-slate-200 rounded-lg w-full"
+                        className="p-2 border border-slate-200 rounded-lg w-full disabled:bg-slate-50 disabled:text-slate-500"
+                        disabled={isStudent}
                       />
                     </div>
                     <div>
@@ -2698,7 +2739,8 @@ export default function SiswaView({
                         step="0.01"
                         value={formAkademik.rataRataRaport || 80} 
                         onChange={(e) => setFormAkademik(prev => ({ ...prev, rataRataRaport: Number(e.target.value) }))}
-                        className="p-2 border border-slate-200 rounded-lg w-full"
+                        className="p-2 border border-slate-200 rounded-lg w-full disabled:bg-slate-50 disabled:text-slate-500"
+                        disabled={isStudent}
                       />
                     </div>
                   </div>
@@ -2708,7 +2750,8 @@ export default function SiswaView({
                       value={formAkademik.catatanWaliKelas || ''} 
                       onChange={(e) => setFormAkademik(prev => ({ ...prev, catatanWaliKelas: e.target.value }))}
                       rows={2}
-                      className="p-2 border border-slate-200 rounded-lg w-full"
+                      className="p-2 border border-slate-200 rounded-lg w-full disabled:bg-slate-50 disabled:text-slate-500"
+                      disabled={isStudent}
                     />
                   </div>
                 </div>

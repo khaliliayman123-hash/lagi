@@ -746,7 +746,7 @@ export default function MasterLaporanView({
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 mb-1">Wali Kelas / Koordinator BK</label>
+                <label className="block text-[10px] font-bold text-slate-500 mb-1">Wali Kelas / Guru BK</label>
                 <select 
                   value={filterGuruBkId}
                   onChange={(e) => setFilterGuruBkId(e.target.value)}
@@ -1312,7 +1312,7 @@ export default function MasterLaporanView({
                       <label className="block text-[10px] font-bold text-slate-500 mb-1">Role Akses</label>
                       <select value={formUser.role || UserRole.GURU_BK} onChange={(e) => setFormUser(prev => ({ ...prev, role: e.target.value as any }))} className="p-2.5 border border-slate-200 bg-white rounded-xl w-full">
                         <option value={UserRole.ADMIN}>Admin</option>
-                        <option value={UserRole.GURU_BK}>Koordinator BK</option>
+                        <option value={UserRole.GURU_BK}>Guru BK</option>
                         <option value={UserRole.WALI_KELAS}>Wali Kelas</option>
                         <option value={UserRole.KEPALA_SEKOLAH}>Kepala Sekolah</option>
                       </select>

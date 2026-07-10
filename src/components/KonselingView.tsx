@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Plus, 
   Search, 
@@ -56,6 +56,7 @@ interface KonselingViewProps {
   onDeleteHomeVisit: (id: string) => Promise<boolean>;
   onSaveKehadiran?: (k: Kehadiran, isNew: boolean) => Promise<boolean>;
   onDeleteKehadiran?: (id: string) => Promise<boolean>;
+  preSelectedKelasId?: string;
 }
 
 type CounselingSubTab = 'konseling' | 'pelanggaran' | 'remisi' | 'prestasi' | 'asesmen' | 'homevisit' | 'kehadiran';
@@ -76,14 +77,30 @@ export default function KonselingView({
   onSaveHomeVisit,
   onDeleteHomeVisit,
   onSaveKehadiran,
-  onDeleteKehadiran
+  onDeleteKehadiran,
+  preSelectedKelasId
 }: KonselingViewProps) {
-
-  const canModify = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.GURU_BK;
 
   // Tabs routing state
   const [activeTab, setActiveTab] = useState<CounselingSubTab>('konseling');
   const [searchQuery, setSearchQuery] = useState('');
+
+  const canModify = currentUser.role === UserRole.ADMIN || 
+                    currentUser.role === UserRole.GURU_BK ||
+                    (currentUser.role === UserRole.GURU_PIKET && (activeTab === 'pelanggaran' || activeTab === 'remisi'));
+
+  // Set default tab for Ruang Wali Kelas and Guru Piket
+  useEffect(() => {
+    if (currentUser.role === UserRole.GURU_PIKET) {
+      if (activeTab !== 'pelanggaran' && activeTab !== 'remisi') {
+        setActiveTab('pelanggaran');
+      }
+    } else if (currentUser.role === UserRole.WALI_KELAS || preSelectedKelasId) {
+      if (activeTab !== 'pelanggaran' && activeTab !== 'remisi' && activeTab !== 'prestasi' && activeTab !== 'kehadiran') {
+        setActiveTab('pelanggaran');
+      }
+    }
+  }, [currentUser.role, preSelectedKelasId, activeTab]);
 
   // State for Remisi and Poin summary dashboard
   const [selectedSummarySiswaId, setSelectedSummarySiswaId] = useState<string>('');
@@ -116,11 +133,16 @@ export default function KonselingView({
     const isNew = !entity;
     setEditingId(isNew ? null : entity.id);
 
+    const filteredSiswa = preSelectedKelasId 
+      ? db.siswa.filter(s => s.kelasId === preSelectedKelasId) 
+      : db.siswa;
+    const defaultSiswaId = filteredSiswa[0]?.id || '';
+
     if (activeTab === 'konseling') {
       setFormKonseling(isNew ? {
         id: `kon-${Date.now()}`,
         nomorKonseling: `BK-${new Date().getFullYear()}-${Math.floor(Math.random() * 900) + 100}`,
-        siswaId: db.siswa[0]?.id || '',
+        siswaId: defaultSiswaId,
         tanggal: new Date().toISOString().split('T')[0],
         jenis: 'Individu',
         guruBkId: currentUser.id,
@@ -133,7 +155,7 @@ export default function KonselingView({
     } else if (activeTab === 'pelanggaran') {
       setFormPelanggaran(isNew ? {
         id: `pel-${Date.now()}`,
-        siswaId: db.siswa[0]?.id || '',
+        siswaId: defaultSiswaId,
         tanggal: new Date().toISOString().split('T')[0],
         jenisPelanggaran: '',
         kategori: 'Ringan',
@@ -145,7 +167,7 @@ export default function KonselingView({
     } else if (activeTab === 'remisi') {
       setFormRemisiPoin(isNew ? {
         id: `rem-${Date.now()}`,
-        siswaId: db.siswa[0]?.id || '',
+        siswaId: defaultSiswaId,
         tanggal: new Date().toISOString().split('T')[0],
         jenisRemisi: '',
         kategori: 'Karakter Baik',
@@ -156,7 +178,7 @@ export default function KonselingView({
     } else if (activeTab === 'prestasi') {
       setFormPrestasi(isNew ? {
         id: `pres-${Date.now()}`,
-        siswaId: db.siswa[0]?.id || '',
+        siswaId: defaultSiswaId,
         namaPrestasi: '',
         tingkat: 'Sekolah',
         tahun: new Date().getFullYear().toString(),
@@ -165,7 +187,7 @@ export default function KonselingView({
     } else if (activeTab === 'asesmen') {
       setFormAsesmen(isNew ? {
         id: `ase-${Date.now()}`,
-        siswaId: db.siswa[0]?.id || '',
+        siswaId: defaultSiswaId,
         akpd: '-',
         dcm: '-',
         aum: '-',
@@ -176,7 +198,7 @@ export default function KonselingView({
     } else if (activeTab === 'homevisit') {
       setFormHomeVisit(isNew ? {
         id: `hv-${Date.now()}`,
-        siswaId: db.siswa[0]?.id || '',
+        siswaId: defaultSiswaId,
         tanggal: new Date().toISOString().split('T')[0],
         tujuan: '',
         hasil: ''
@@ -184,7 +206,7 @@ export default function KonselingView({
     } else if (activeTab === 'kehadiran') {
       setFormKehadiran(isNew ? {
         id: `att-${Date.now()}`,
-        siswaId: db.siswa[0]?.id || '',
+        siswaId: defaultSiswaId,
         mingguKe: 'Minggu 1',
         bulan: 'Juli',
         tahun: '2026',
@@ -257,96 +279,130 @@ export default function KonselingView({
     if (activeTab === 'konseling') {
       return db.konseling.filter(k => {
         const siswa = db.siswa.find(s => s.id === k.siswaId);
-        return (siswa?.nama.toLowerCase().includes(q) || k.nomorKonseling.toLowerCase().includes(q) || k.permasalahan.toLowerCase().includes(q));
+        return (
+          (siswa?.nama || '').toLowerCase().includes(q) || 
+          (k.nomorKonseling || '').toLowerCase().includes(q) || 
+          (k.permasalahan || '').toLowerCase().includes(q)
+        );
       });
     } else if (activeTab === 'pelanggaran') {
       return db.pelanggaran.filter(p => {
         const siswa = db.siswa.find(s => s.id === p.siswaId);
-        return (siswa?.nama.toLowerCase().includes(q) || p.jenisPelanggaran.toLowerCase().includes(q) || p.kategori.toLowerCase().includes(q));
+        if (preSelectedKelasId && siswa?.kelasId !== preSelectedKelasId) return false;
+        return (
+          (siswa?.nama || '').toLowerCase().includes(q) || 
+          (p.jenisPelanggaran || '').toLowerCase().includes(q) || 
+          (p.kategori || '').toLowerCase().includes(q)
+        );
       });
     } else if (activeTab === 'remisi') {
       return (db.remisiPoin || []).filter(r => {
         const siswa = db.siswa.find(s => s.id === r.siswaId);
-        return (siswa?.nama.toLowerCase().includes(q) || r.jenisRemisi.toLowerCase().includes(q) || r.kategori.toLowerCase().includes(q));
+        if (preSelectedKelasId && siswa?.kelasId !== preSelectedKelasId) return false;
+        return (
+          (siswa?.nama || '').toLowerCase().includes(q) || 
+          (r.jenisRemisi || '').toLowerCase().includes(q) || 
+          (r.kategori || '').toLowerCase().includes(q)
+        );
       });
     } else if (activeTab === 'prestasi') {
       return db.prestasi.filter(p => {
         const siswa = db.siswa.find(s => s.id === p.siswaId);
-        return (siswa?.nama.toLowerCase().includes(q) || p.namaPrestasi.toLowerCase().includes(q) || p.tingkat.toLowerCase().includes(q));
+        if (preSelectedKelasId && siswa?.kelasId !== preSelectedKelasId) return false;
+        return (
+          (siswa?.nama || '').toLowerCase().includes(q) || 
+          (p.namaPrestasi || '').toLowerCase().includes(q) || 
+          (p.tingkat || '').toLowerCase().includes(q)
+        );
       });
     } else if (activeTab === 'asesmen') {
       return db.asesmen.filter(a => {
         const siswa = db.siswa.find(s => s.id === a.siswaId);
-        return (siswa?.nama.toLowerCase().includes(q) || a.akpd?.toLowerCase().includes(q) || a.iq?.toString().includes(q));
+        return (
+          (siswa?.nama || '').toLowerCase().includes(q) || 
+          (a.akpd || '').toLowerCase().includes(q) || 
+          (a.iq || '').toString().includes(q)
+        );
       });
     } else if (activeTab === 'homevisit') {
       return db.homeVisit.filter(h => {
         const siswa = db.siswa.find(s => s.id === h.siswaId);
-        return (siswa?.nama.toLowerCase().includes(q) || h.tujuan.toLowerCase().includes(q) || h.hasil.toLowerCase().includes(q));
+        return (
+          (siswa?.nama || '').toLowerCase().includes(q) || 
+          (h.tujuan || '').toLowerCase().includes(q) || 
+          (h.hasil || '').toLowerCase().includes(q)
+        );
       });
     } else if (activeTab === 'kehadiran') {
       return (db.kehadiran || []).filter(h => {
         const siswa = db.siswa.find(s => s.id === h.siswaId);
-        return (siswa?.nama.toLowerCase().includes(q) || h.mingguKe.toLowerCase().includes(q) || h.bulan.toLowerCase().includes(q) || h.keterangan?.toLowerCase().includes(q));
+        return (
+          (siswa?.nama || '').toLowerCase().includes(q) || 
+          (h.mingguKe || '').toLowerCase().includes(q) || 
+          (h.bulan || '').toLowerCase().includes(q) || 
+          (h.keterangan || '').toLowerCase().includes(q)
+        );
       });
     }
     return [];
-  }, [db, activeTab, searchQuery]);
+  }, [db, activeTab, searchQuery, preSelectedKelasId]);
 
   // Memoized calculations for students who have violations or remissions
   const studentPointSummaries = useMemo(() => {
-    return db.siswa.map(siswa => {
-      const kelas = db.kelas.find(c => c.id === siswa.kelasId || c.namaKelas.toLowerCase().trim() === siswa.kelasId?.toLowerCase().trim());
-      const kelasName = kelas?.namaKelas || siswa.kelasId || 'Kelas Tidak Terdata';
-      const pelanggaranList = db.pelanggaran.filter(p => p.siswaId === siswa.id);
-      const totalPelanggaran = pelanggaranList.reduce((sum, p) => sum + (p.poin || 0), 0);
-      
-      const remisiList = (db.remisiPoin || []).filter(r => r.siswaId === siswa.id);
-      const totalRemisi = remisiList.reduce((sum, r) => sum + (r.poin || 0), 0);
-      
-      const sisaPoin = Math.max(0, totalPelanggaran - totalRemisi);
-      
-      // Define level and behavior recommendation
-      let statusColor = 'bg-emerald-50 text-emerald-700 border-emerald-100';
-      let statusLabel = 'Sangat Baik (Sadar Disiplin)';
-      let rekomendasi = 'Siswa menunjukkan sikap kepatuhan yang luar biasa dan sadar tata tertib.';
-      
-      if (sisaPoin > 0 && sisaPoin <= 20) {
-        statusColor = 'bg-teal-50 text-teal-700 border-teal-100';
-        statusLabel = 'Baik';
-        rekomendasi = 'Tingkatkan kesadaran disiplin dan pertahankan prestasi perilaku terpuji.';
-      } else if (sisaPoin > 20 && sisaPoin <= 50) {
-        statusColor = 'bg-amber-50 text-amber-700 border-amber-100';
-        statusLabel = 'Cukup (Pembinaan Ringan)';
-        rekomendasi = 'Siswa memerlukan bimbingan ringan dari wali kelas untuk mereduksi potensi pelanggaran.';
-      } else if (sisaPoin > 50 && sisaPoin <= 75) {
-        statusColor = 'bg-orange-50 text-orange-700 border-orange-100';
-        statusLabel = 'Peringatan I (Pembinaan BK)';
-        rekomendasi = 'Siswa wajib mengikuti konseling terprogram bersama konselor BK untuk refleksi perilaku.';
-      } else if (sisaPoin > 75 && sisaPoin <= 150) {
-        statusColor = 'bg-rose-50 text-rose-700 border-rose-100';
-        statusLabel = 'Peringatan II / SP';
-        rekomendasi = 'Siswa dalam kondisi kritis kedisiplinan. Surat Perjanjian Khusus dan pemanggilan orang tua diperlukan.';
-      } else if (sisaPoin > 150) {
-        statusColor = 'bg-red-50 text-red-700 border-red-100';
-        statusLabel = 'Sanksi Berat / Skorsing';
-        rekomendasi = 'Kasus siswa dirujuk ke sidang dewan guru dan kepala sekolah untuk penetapan sanksi akademik.';
-      }
+    return db.siswa
+      .filter(s => !preSelectedKelasId || s.kelasId === preSelectedKelasId)
+      .map(siswa => {
+        const kelas = db.kelas.find(c => c.id === siswa.kelasId || c.namaKelas.toLowerCase().trim() === siswa.kelasId?.toLowerCase().trim());
+        const kelasName = kelas?.namaKelas || siswa.kelasId || 'Kelas Tidak Terdata';
+        const pelanggaranList = db.pelanggaran.filter(p => p.siswaId === siswa.id);
+        const totalPelanggaran = pelanggaranList.reduce((sum, p) => sum + (p.poin || 0), 0);
+        
+        const remisiList = (db.remisiPoin || []).filter(r => r.siswaId === siswa.id);
+        const totalRemisi = remisiList.reduce((sum, r) => sum + (r.poin || 0), 0);
+        
+        const sisaPoin = Math.max(0, totalPelanggaran - totalRemisi);
+        
+        // Define level and behavior recommendation
+        let statusColor = 'bg-emerald-50 text-emerald-700 border-emerald-100';
+        let statusLabel = 'Sangat Baik (Sadar Disiplin)';
+        let rekomendasi = 'Siswa menunjukkan sikap kepatuhan yang luar biasa dan sadar tata tertib.';
+        
+        if (sisaPoin > 0 && sisaPoin <= 20) {
+          statusColor = 'bg-teal-50 text-teal-700 border-teal-100';
+          statusLabel = 'Baik';
+          rekomendasi = 'Tingkatkan kesadaran disiplin dan pertahankan prestasi perilaku terpuji.';
+        } else if (sisaPoin > 20 && sisaPoin <= 50) {
+          statusColor = 'bg-amber-50 text-amber-700 border-amber-100';
+          statusLabel = 'Cukup (Pembinaan Ringan)';
+          rekomendasi = 'Siswa memerlukan bimbingan ringan dari wali kelas untuk mereduksi potensi pelanggaran.';
+        } else if (sisaPoin > 50 && sisaPoin <= 75) {
+          statusColor = 'bg-orange-50 text-orange-700 border-orange-100';
+          statusLabel = 'Peringatan I (Pembinaan BK)';
+          rekomendasi = 'Siswa wajib mengikuti konseling terprogram bersama konselor BK untuk refleksi perilaku.';
+        } else if (sisaPoin > 75 && sisaPoin <= 150) {
+          statusColor = 'bg-rose-50 text-rose-700 border-rose-100';
+          statusLabel = 'Peringatan II / SP';
+          rekomendasi = 'Siswa dalam kondisi kritis kedisiplinan. Surat Perjanjian Khusus dan pemanggilan orang tua diperlukan.';
+        } else if (sisaPoin > 150) {
+          statusColor = 'bg-red-50 text-red-700 border-red-100';
+          statusLabel = 'Sanksi Berat / Skorsing';
+          rekomendasi = 'Kasus siswa dirujuk ke sidang dewan guru dan kepala sekolah untuk penetapan sanksi akademik.';
+        }
 
-      return {
-        siswa,
-        kelasName,
-        totalPelanggaran,
-        totalRemisi,
-        sisaPoin,
-        pelanggaranList,
-        remisiList,
-        statusColor,
-        statusLabel,
-        rekomendasi
-      };
-    });
-  }, [db]);
+        return {
+          siswa,
+          kelasName,
+          totalPelanggaran,
+          totalRemisi,
+          sisaPoin,
+          pelanggaranList,
+          remisiList,
+          statusColor,
+          statusLabel,
+          rekomendasi
+        };
+      });
+  }, [db, preSelectedKelasId]);
 
   const handlePrintKeteranganPoin = (siswaId: string) => {
     const summary = studentPointSummaries.find(s => s.siswa.id === siswaId);
@@ -675,12 +731,14 @@ export default function KonselingView({
       {/* Dynamic Sub Tab Selector Navigation */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="flex flex-wrap bg-white p-1 rounded-xl border border-slate-100 shadow-sm text-xs font-semibold text-slate-500">
-          <button 
-            onClick={() => { setActiveTab('konseling'); setSearchQuery(''); }}
-            className={`px-4 py-2 rounded-lg flex items-center gap-1.5 transition ${activeTab === 'konseling' ? 'bg-emerald-600 text-white shadow-sm' : 'hover:bg-slate-50'}`}
-          >
-            <MessageSquare size={14} /> Layanan Konseling
-          </button>
+          {currentUser.role !== UserRole.WALI_KELAS && currentUser.role !== UserRole.GURU_PIKET && !preSelectedKelasId && (
+            <button 
+              onClick={() => { setActiveTab('konseling'); setSearchQuery(''); }}
+              className={`px-4 py-2 rounded-lg flex items-center gap-1.5 transition ${activeTab === 'konseling' ? 'bg-emerald-600 text-white shadow-sm' : 'hover:bg-slate-50'}`}
+            >
+              <MessageSquare size={14} /> Layanan Konseling
+            </button>
+          )}
           <button 
             onClick={() => { setActiveTab('pelanggaran'); setSearchQuery(''); }}
             className={`px-4 py-2 rounded-lg flex items-center gap-1.5 transition ${activeTab === 'pelanggaran' ? 'bg-rose-600 text-white shadow-sm' : 'hover:bg-slate-50'}`}
@@ -693,30 +751,38 @@ export default function KonselingView({
           >
             <Heart size={14} className={activeTab === 'remisi' ? 'text-white' : 'text-sky-500'} /> Remisi Poin
           </button>
-          <button 
-            onClick={() => { setActiveTab('prestasi'); setSearchQuery(''); }}
-            className={`px-4 py-2 rounded-lg flex items-center gap-1.5 transition ${activeTab === 'prestasi' ? 'bg-amber-600 text-white shadow-sm' : 'hover:bg-slate-50'}`}
-          >
-            <Award size={14} /> Rekam Prestasi
-          </button>
-          <button 
-            onClick={() => { setActiveTab('asesmen'); setSearchQuery(''); }}
-            className={`px-4 py-2 rounded-lg flex items-center gap-1.5 transition ${activeTab === 'asesmen' ? 'bg-teal-600 text-white shadow-sm' : 'hover:bg-slate-50'}`}
-          >
-            <Activity size={14} /> Asesmen BK
-          </button>
-          <button 
-            onClick={() => { setActiveTab('homevisit'); setSearchQuery(''); }}
-            className={`px-4 py-2 rounded-lg flex items-center gap-1.5 transition ${activeTab === 'homevisit' ? 'bg-indigo-600 text-white shadow-sm' : 'hover:bg-slate-50'}`}
-          >
-            <Home size={14} /> Kunjungan Rumah
-          </button>
-          <button 
-            onClick={() => { setActiveTab('kehadiran'); setSearchQuery(''); }}
-            className={`px-4 py-2 rounded-lg flex items-center gap-1.5 transition ${activeTab === 'kehadiran' ? 'bg-cyan-600 text-white shadow-sm' : 'hover:bg-slate-50'}`}
-          >
-            <FileSpreadsheet size={14} /> Rekap Kehadiran
-          </button>
+          {currentUser.role !== UserRole.GURU_PIKET && (
+            <button 
+              onClick={() => { setActiveTab('prestasi'); setSearchQuery(''); }}
+              className={`px-4 py-2 rounded-lg flex items-center gap-1.5 transition ${activeTab === 'prestasi' ? 'bg-amber-600 text-white shadow-sm' : 'hover:bg-slate-50'}`}
+            >
+              <Award size={14} /> Rekam Prestasi
+            </button>
+          )}
+          {currentUser.role !== UserRole.WALI_KELAS && currentUser.role !== UserRole.GURU_PIKET && !preSelectedKelasId && (
+            <>
+              <button 
+                onClick={() => { setActiveTab('asesmen'); setSearchQuery(''); }}
+                className={`px-4 py-2 rounded-lg flex items-center gap-1.5 transition ${activeTab === 'asesmen' ? 'bg-teal-600 text-white shadow-sm' : 'hover:bg-slate-50'}`}
+              >
+                <Activity size={14} /> Asesmen BK
+              </button>
+              <button 
+                onClick={() => { setActiveTab('homevisit'); setSearchQuery(''); }}
+                className={`px-4 py-2 rounded-lg flex items-center gap-1.5 transition ${activeTab === 'homevisit' ? 'bg-indigo-600 text-white shadow-sm' : 'hover:bg-slate-50'}`}
+              >
+                <Home size={14} /> Kunjungan Rumah
+              </button>
+            </>
+          )}
+          {currentUser.role !== UserRole.GURU_PIKET && (currentUser.role === UserRole.WALI_KELAS || !preSelectedKelasId) && (
+            <button 
+              onClick={() => { setActiveTab('kehadiran'); setSearchQuery(''); }}
+              className={`px-4 py-2 rounded-lg flex items-center gap-1.5 transition ${activeTab === 'kehadiran' ? 'bg-cyan-600 text-white shadow-sm' : 'hover:bg-slate-50'}`}
+            >
+              <FileSpreadsheet size={14} /> Rekap Kehadiran
+            </button>
+          )}
         </div>
 
         {canModify && (
@@ -885,15 +951,17 @@ export default function KonselingView({
                         className="p-2.5 border border-slate-200 bg-white rounded-xl text-xs w-full font-semibold focus:outline-none focus:border-sky-500 transition"
                       >
                         <option value="" disabled>-- Pilih Siswa --</option>
-                        {db.siswa.map(s => {
-                          const summary = studentPointSummaries.find(sum => sum.siswa.id === s.id);
-                          const pointsText = summary ? `(${summary.totalPelanggaran} Pts Pelanggaran, -${summary.totalRemisi} Pts Remisi)` : '(0 Pts)';
-                          return (
-                            <option key={s.id} value={s.id}>
-                              {s.nama} {pointsText}
-                            </option>
-                          );
-                        })}
+                        {db.siswa
+                          .filter(s => !preSelectedKelasId || s.kelasId === preSelectedKelasId)
+                          .map(s => {
+                            const summary = studentPointSummaries.find(sum => sum.siswa.id === s.id);
+                            const pointsText = summary ? `(${summary.totalPelanggaran} Pts Pelanggaran, -${summary.totalRemisi} Pts Remisi)` : '(0 Pts)';
+                            return (
+                              <option key={s.id} value={s.id}>
+                                {s.nama} {pointsText}
+                              </option>
+                            );
+                          })}
                       </select>
                     </div>
 
@@ -1305,7 +1373,9 @@ export default function KonselingView({
                   className="p-2.5 border border-slate-200 bg-white rounded-xl w-full"
                   required
                 >
-                  {db.siswa.map(s => <option key={s.id} value={s.id}>{s.nama} ({db.kelas.find(k => k.id === s.kelasId)?.namaKelas})</option>)}
+                  {db.siswa
+                    .filter(s => !preSelectedKelasId || s.kelasId === preSelectedKelasId)
+                    .map(s => <option key={s.id} value={s.id}>{s.nama} ({db.kelas.find(k => k.id === s.kelasId)?.namaKelas})</option>)}
                 </select>
               </div>
 
@@ -1331,7 +1401,7 @@ export default function KonselingView({
                     <textarea rows={2} value={formKonseling.permasalahan || ''} onChange={(e) => setFormKonseling(prev => ({ ...prev, permasalahan: e.target.value }))} className="p-2.5 border border-slate-200 rounded-xl w-full" required />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Analisis Koordinator BK</label>
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Analisis Guru BK</label>
                     <textarea rows={2} value={formKonseling.analisis || ''} onChange={(e) => setFormKonseling(prev => ({ ...prev, analisis: e.target.value }))} className="p-2.5 border border-slate-200 rounded-xl w-full" />
                   </div>
                   <div>

@@ -21,7 +21,10 @@ import {
   Database,
   ArrowRight,
   BookOpen,
-  CheckCircle2
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Presentation
 } from 'lucide-react';
 
 // Sub views
@@ -63,6 +66,8 @@ export default function App() {
   // High-fidelity deep link states to traverse panels
   const [deepLinkSiswaId, setDeepLinkSiswaId] = useState<string | undefined>(undefined);
   const [deepLinkSubTab, setDeepLinkSubTab] = useState<string | undefined>(undefined);
+  const [ruangWaliOpen, setRuangWaliOpen] = useState(false);
+  const [deepLinkKelasId, setDeepLinkKelasId] = useState<string | undefined>(undefined);
 
   // Settings URL inputs
   const [gasUrlInput, setGasUrlInput] = useState('');
@@ -81,11 +86,13 @@ export default function App() {
   const loadDatabase = async (checkConnection: boolean = false, localOnly: boolean = false) => {
     setIsLoading(true);
     try {
-      const data = await apiService.getData(false, localOnly);
+      // 1. Instantly load local data to make login/dashboard load instantly (0 ms delay)
+      const data = await apiService.getData(false, true);
       setDb(data);
       setGasUrlInput(data.config.gasApiUrl || '');
       setSpreadsheetIdInput(data.config.spreadsheetId || '');
-      
+      setIsLoading(false); // Disable blocking screen immediately!
+
       if (data.config.gasApiUrl) {
         if (checkConnection) {
           setConnStatus('checking');
@@ -93,19 +100,36 @@ export default function App() {
           if (res.success) {
             setConnStatus('connected');
             setConnMessage(res.message);
+            // Refresh with remote data
+            apiService.getData(false, false).then((remoteData) => {
+              setDb(remoteData);
+            }).catch(console.error);
           } else {
             setConnStatus('failed');
             setConnMessage(res.message);
             setConnCode(res.code || '');
           }
         } else {
-          // Optimization: If the last API call was successful, keep/set 'connected' status
-          if (apiService.getLastFetchStatus()) {
+          if (!localOnly) {
+            // Trigger background async remote sync (Non-blocking!)
+            apiService.getData(false, false)
+              .then((remoteData) => {
+                setDb(remoteData);
+                setConnStatus('connected');
+                setConnMessage('Koneksi berhasil dan sinkron dengan Google Sheets.');
+              })
+              .catch((err) => {
+                console.warn('Background sync failed:', err);
+                if (apiService.getLastFetchStatus()) {
+                  setConnStatus('connected');
+                } else {
+                  setConnStatus('failed');
+                  setConnMessage('Gagal menyinkronkan data dari awan, menggunakan salinan lokal.');
+                }
+              });
+          } else {
             setConnStatus('connected');
             setConnMessage('Koneksi berhasil dan aktif!');
-          } else {
-            setConnStatus('failed');
-            setConnMessage('Gagal memuat database dari awan.');
           }
         }
       } else {
@@ -113,7 +137,6 @@ export default function App() {
       }
     } catch (e) {
       console.error('Failed to load database state', e);
-    } finally {
       setIsLoading(false);
     }
   };
@@ -123,15 +146,25 @@ export default function App() {
     setIsLoggingIn(true);
     setLoginError('');
     try {
-      const res = await apiService.login(username, pass);
+      const res = await apiService.login(username, pass, loginTab === 'siswa');
       if (res.success && res.user) {
         setCurrentUser(res.user);
         setPassword(''); // Clear password field
         if (res.user.role === UserRole.SISWA) {
           setActiveMenu('siswa');
           setDeepLinkSiswaId(res.user.id);
+          setDeepLinkKelasId(undefined);
+        } else if (res.user.role === UserRole.WALI_KELAS) {
+          setActiveMenu('siswa');
+          setDeepLinkKelasId(res.user.kelasId);
+          setDeepLinkSiswaId(undefined);
+        } else if (res.user.role === UserRole.GURU_PIKET) {
+          setActiveMenu('siswa');
+          setDeepLinkKelasId(undefined);
+          setDeepLinkSiswaId(undefined);
         } else {
           setActiveMenu('dashboard');
+          setDeepLinkKelasId(undefined);
           setDeepLinkSiswaId(undefined);
         }
       } else {
@@ -171,21 +204,83 @@ export default function App() {
     silent: boolean = false,
     localOnly: boolean = false
   ) => {
-    if (!silent) setIsLoading(true);
     try {
-      const res = await apiService.saveSiswa(siswa, orangTua, kesehatan, ekonomi, psikologi, sosial, akademik, isNew, localOnly);
-      if (!silent) {
-        alert(res.message);
-        if (res.success) {
-          await loadDatabase(false, true);
+      // 1. Optimistic UI update: Always save locally first (takes ~1ms, completely offline)
+      const res = await apiService.saveSiswa(siswa, orangTua, kesehatan, ekonomi, psikologi, sosial, akademik, isNew, true);
+      
+      if (res.success) {
+        // Instantly update the state so directory/profile reflects changes in 0ms
+        setDb(prev => {
+          if (!prev) return prev;
+          let newSiswa = [...prev.siswa];
+          let newOrangTua = [...prev.orangTua];
+          let newKesehatan = [...prev.kesehatan];
+          let newEkonomi = [...prev.ekonomi];
+          let newPsikologi = [...prev.psikologi];
+          let newSosial = [...prev.sosial];
+          let newAkademik = [...prev.akademik];
+
+          if (isNew) {
+            newSiswa.push(siswa);
+            newOrangTua.push(orangTua);
+            newKesehatan.push(kesehatan);
+            newEkonomi.push(ekonomi);
+            newPsikologi.push(psikologi);
+            newSosial.push(sosial);
+            newAkademik.push(akademik);
+          } else {
+            newSiswa = newSiswa.map(s => s.id === siswa.id ? siswa : s);
+            newOrangTua = newOrangTua.map(o => o.id === orangTua.id ? orangTua : o);
+            newKesehatan = newKesehatan.map(k => k.id === kesehatan.id ? kesehatan : k);
+            newEkonomi = newEkonomi.map(e => e.id === ekonomi.id ? ekonomi : e);
+            newPsikologi = newPsikologi.map(p => p.id === psikologi.id ? psikologi : p);
+            newSosial = newSosial.map(s => s.id === sosial.id ? sosial : s);
+            newAkademik = newAkademik.map(a => a.id === akademik.id ? akademik : a);
+          }
+
+          return {
+            ...prev,
+            siswa: newSiswa,
+            orangTua: newOrangTua,
+            kesehatan: newKesehatan,
+            ekonomi: newEkonomi,
+            psikologi: newPsikologi,
+            sosial: newSosial,
+            akademik: newAkademik
+          };
+        });
+
+        if (!silent) {
+          showToast('Data berhasil disimpan secara lokal!', 'success');
         }
+
+        // 2. If online mode is active, trigger background upload (Non-blocking!)
+        if (!localOnly && apiService.isOnlineMode()) {
+          if (!silent) {
+            showToast('Menyinkronkan data ke Google Sheets...', 'info');
+          }
+          apiService.saveSiswa(siswa, orangTua, kesehatan, ekonomi, psikologi, sosial, akademik, isNew, false)
+            .then((onlineRes) => {
+              if (onlineRes.success) {
+                showToast('Sinkronisasi Google Sheets sukses!', 'success');
+              } else {
+                showToast('Gagal sinkronisasi Google Sheets. Data aman di perangkat Anda.', 'error');
+                console.error(onlineRes.message);
+              }
+            })
+            .catch((err) => {
+              showToast('Koneksi bermasalah. Sinkronisasi ditunda.', 'error');
+              console.error(err);
+            });
+        }
+        return true;
+      } else {
+        if (!silent) alert(res.message);
+        return false;
       }
-      return res.success;
     } catch (e: any) {
       if (!silent) alert('Gagal menyimpan siswa: ' + e.toString());
       return false;
-    } finally {
-      if (!silent) setIsLoading(false);
     }
   };
 
@@ -295,14 +390,16 @@ export default function App() {
 
         {/* Card Frame with glassmorphism styling */}
         <div id="login-card" className="bg-white/80 backdrop-blur-md w-full max-w-md p-8 rounded-2xl border border-slate-100 shadow-xl relative z-10 space-y-6">
-          <div className="text-center space-y-2">
-            <div className="w-16 h-16 bg-gradient-to-tr from-emerald-600 to-teal-700 text-white rounded-2xl flex items-center justify-center mx-auto shadow-md">
-              <GraduationCap size={36} />
+          <div className="text-center space-y-3">
+            <div className="flex items-center justify-center gap-1.5 text-emerald-600 text-[10px] font-bold tracking-widest uppercase">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              PORTAL RESMI AKADEMIK & BK
             </div>
-            <h1 className="text-base md:text-lg font-extrabold text-slate-800 tracking-tight leading-snug uppercase">
+            <h1 className="text-lg md:text-xl font-black text-slate-800 tracking-tight leading-tight uppercase">
               Sistem Himpunan Data Siswa (HDS)
             </h1>
-            <h2 className="text-xs md:text-sm font-bold text-emerald-600 tracking-wide uppercase leading-normal">
+            <div className="w-12 h-1 bg-emerald-500 mx-auto rounded-full"></div>
+            <h2 className="text-xs md:text-sm font-bold text-slate-600 tracking-wide uppercase leading-normal">
               UPTD SMP NEGERI 17 TANGERANG SELATAN
             </h2>
             <p className="text-[11px] text-slate-400 max-w-[320px] mx-auto leading-relaxed">
@@ -361,7 +458,29 @@ export default function App() {
                         : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
                     }`}
                   >
-                    <Sparkles size={12} className={selectedUsername === 'gurubk' ? 'text-emerald-600' : 'text-slate-400'} /> Koordinator BK
+                    <Sparkles size={12} className={selectedUsername === 'gurubk' ? 'text-emerald-600' : 'text-slate-400'} /> Guru BK
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => { setSelectedUsername('Wali Kelas'); setLoginError(''); }}
+                    className={`p-2.5 rounded-xl border transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                      selectedUsername === 'Wali Kelas'
+                        ? 'bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm font-bold'
+                        : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <Sparkles size={12} className={selectedUsername === 'Wali Kelas' ? 'text-emerald-600' : 'text-slate-400'} /> Wali Kelas
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => { setSelectedUsername('guru piket'); setLoginError(''); }}
+                    className={`p-2.5 rounded-xl border transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                      selectedUsername === 'guru piket'
+                        ? 'bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm font-bold'
+                        : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <Sparkles size={12} className={selectedUsername === 'guru piket' ? 'text-emerald-600' : 'text-slate-400'} /> Guru Piket
                   </button>
                 </div>
               </div>
@@ -375,9 +494,6 @@ export default function App() {
                   onChange={(e) => setPassword(e.target.value)}
                   className="p-2.5 bg-white border border-slate-200 rounded-xl w-full text-xs focus:outline-none focus:border-emerald-500 font-medium"
                 />
-                <p className="text-[9px] text-slate-400 mt-1">
-                  *Admin: <span className="font-mono text-slate-500">admin123</span> | Koordinator BK: <span className="font-mono text-slate-500">bk123</span>
-                </p>
               </div>
 
               <button 
@@ -443,13 +559,15 @@ export default function App() {
       <aside id="sidebar-panel" className="hidden md:flex flex-col justify-between w-64 bg-slate-900 text-slate-300 p-5 border-r border-slate-800 flex-shrink-0">
         <div className="space-y-6">
           {/* App title */}
-          <div className="flex items-center gap-3 border-b border-slate-800 pb-4">
-            <div className="w-10 h-10 bg-gradient-to-tr from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center text-white shadow-md">
-              <GraduationCap size={22} />
+          <div className="border-b border-slate-800 pb-4 space-y-1.5">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 bg-emerald-600/20 text-emerald-400 rounded text-[9px] font-bold uppercase tracking-wider">
+                HDS SYSTEM
+              </span>
             </div>
             <div>
-              <h2 className="font-bold text-xs text-white uppercase tracking-wider">Sistem HDS BK</h2>
-              <p className="text-[10px] text-slate-400">SMP Negeri 17 Tangsel</p>
+              <h2 className="font-extrabold text-sm text-white uppercase tracking-wider">Sistem HDS BK</h2>
+              <p className="text-[10px] text-slate-400 font-medium leading-tight">SMP Negeri 17 Tangerang Selatan</p>
             </div>
           </div>
 
@@ -464,42 +582,161 @@ export default function App() {
               </button>
             ) : (
               <>
+                {currentUser.role !== UserRole.WALI_KELAS && currentUser.role !== UserRole.GURU_PIKET && (
+                  <button 
+                    onClick={() => { setActiveMenu('dashboard'); setDeepLinkSiswaId(undefined); }}
+                    className={`p-3 rounded-xl text-left flex items-center gap-3 transition cursor-pointer ${activeMenu === 'dashboard' ? 'bg-emerald-600 text-white font-bold' : 'hover:bg-slate-800 hover:text-white'}`}
+                  >
+                    <Users size={16} /> Dashboard Evaluasi
+                  </button>
+                )}
                 <button 
-                  onClick={() => { setActiveMenu('dashboard'); setDeepLinkSiswaId(undefined); }}
-                  className={`p-3 rounded-xl text-left flex items-center gap-3 transition cursor-pointer ${activeMenu === 'dashboard' ? 'bg-emerald-600 text-white font-bold' : 'hover:bg-slate-800 hover:text-white'}`}
-                >
-                  <Users size={16} /> Dashboard Evaluasi
-                </button>
-                <button 
-                  onClick={() => { setActiveMenu('siswa'); setDeepLinkSiswaId(undefined); }}
-                  className={`p-3 rounded-xl text-left flex items-center gap-3 transition cursor-pointer ${activeMenu === 'siswa' ? 'bg-emerald-600 text-white font-bold' : 'hover:bg-slate-800 hover:text-white'}`}
+                  onClick={() => { 
+                    setActiveMenu('siswa'); 
+                    setDeepLinkSiswaId(undefined); 
+                    if (currentUser.role !== UserRole.WALI_KELAS) {
+                      setDeepLinkKelasId(undefined); 
+                    }
+                  }}
+                  className={`p-3 rounded-xl text-left flex items-center gap-3 transition cursor-pointer ${activeMenu === 'siswa' && (!deepLinkKelasId || currentUser.role === UserRole.WALI_KELAS) ? 'bg-emerald-600 text-white font-bold' : 'hover:bg-slate-800 hover:text-white'}`}
                 >
                   <BookOpen size={16} /> Direktori Siswa (HDS)
                 </button>
+
+                {/* RUANG WALI KELAS (Collapsible Sidebar Item) */}
+                {currentUser.role !== UserRole.WALI_KELAS && currentUser.role !== UserRole.GURU_PIKET && (
+                  <div className="flex flex-col">
+                    <button 
+                      onClick={() => { setRuangWaliOpen(!ruangWaliOpen); }}
+                      className={`p-3 rounded-xl text-left flex items-center justify-between transition cursor-pointer hover:bg-slate-800 hover:text-white ${deepLinkKelasId ? 'text-white font-bold bg-slate-800/50' : ''}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Presentation size={16} className="text-amber-500" />
+                        <span>Ruang Wali Kelas</span>
+                      </div>
+                      {ruangWaliOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    </button>
+                    
+                    {ruangWaliOpen && (
+                      <div className="mt-1 ml-3 pl-3 border-l border-slate-800/60 flex flex-col gap-3 py-1.5">
+                        {/* Kelas 7 */}
+                        <div>
+                          <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1.5">Kelas VII</p>
+                          <div className="grid grid-cols-4 gap-1 text-[11px]">
+                            {Array.from({ length: 11 }).map((_, i) => {
+                              const classId = `kl-${i + 1}`;
+                              const className = `7-${i + 1}`;
+                              const isSelected = deepLinkKelasId === classId;
+                              return (
+                                <button
+                                  key={classId}
+                                  onClick={() => {
+                                    setActiveMenu('siswa');
+                                    setDeepLinkKelasId(classId);
+                                    setDeepLinkSiswaId(undefined); // Clear deep-linked student to show the list of that class
+                                  }}
+                                  className={`py-1 rounded text-center transition font-semibold cursor-pointer ${
+                                    isSelected 
+                                      ? 'bg-emerald-600 text-white font-bold shadow-xs' 
+                                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white'
+                                  }`}
+                                >
+                                  {className}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Kelas 8 */}
+                        <div>
+                          <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1.5">Kelas VIII</p>
+                          <div className="grid grid-cols-4 gap-1 text-[11px]">
+                            {Array.from({ length: 11 }).map((_, i) => {
+                              const classId = `kl-${i + 12}`;
+                              const className = `8-${i + 1}`;
+                              const isSelected = deepLinkKelasId === classId;
+                              return (
+                                <button
+                                  key={classId}
+                                  onClick={() => {
+                                    setActiveMenu('siswa');
+                                    setDeepLinkKelasId(classId);
+                                    setDeepLinkSiswaId(undefined);
+                                  }}
+                                  className={`py-1 rounded text-center transition font-semibold cursor-pointer ${
+                                    isSelected 
+                                      ? 'bg-emerald-600 text-white font-bold shadow-xs' 
+                                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white'
+                                  }`}
+                                >
+                                  {className}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Kelas 9 */}
+                        <div>
+                          <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1.5">Kelas IX</p>
+                          <div className="grid grid-cols-4 gap-1 text-[11px]">
+                            {Array.from({ length: 11 }).map((_, i) => {
+                              const classId = `kl-${i + 23}`;
+                              const className = `9-${i + 1}`;
+                              const isSelected = deepLinkKelasId === classId;
+                              return (
+                                <button
+                                  key={classId}
+                                  onClick={() => {
+                                    setActiveMenu('siswa');
+                                    setDeepLinkKelasId(classId);
+                                    setDeepLinkSiswaId(undefined);
+                                  }}
+                                  className={`py-1 rounded text-center transition font-semibold cursor-pointer ${
+                                    isSelected 
+                                      ? 'bg-emerald-600 text-white font-bold shadow-xs' 
+                                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white'
+                                  }`}
+                                >
+                                  {className}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <button 
                   onClick={() => { setActiveMenu('layanan'); }}
                   className={`p-3 rounded-xl text-left flex items-center gap-3 transition cursor-pointer ${activeMenu === 'layanan' ? 'bg-emerald-600 text-white font-bold' : 'hover:bg-slate-800 hover:text-white'}`}
                 >
                   <MessageSquare size={16} /> Layanan BK & Disiplin
                 </button>
-                <button 
-                  onClick={() => { setActiveMenu('dokumen'); }}
-                  className={`p-3 rounded-xl text-left flex items-center gap-3 transition cursor-pointer ${activeMenu === 'dokumen' ? 'bg-emerald-600 text-white font-bold' : 'hover:bg-slate-800 hover:text-white'}`}
-                >
-                  <Upload size={16} /> Arsip & Surat Resmi
-                </button>
-                <button 
-                  onClick={() => { setActiveMenu('master'); }}
-                  className={`p-3 rounded-xl text-left flex items-center gap-3 transition cursor-pointer ${activeMenu === 'master' ? 'bg-emerald-600 text-white font-bold' : 'hover:bg-slate-800 hover:text-white'}`}
-                >
-                  <FileSpreadsheet size={16} /> Pelaporan & Master
-                </button>
-                <button 
-                  onClick={() => { setActiveMenu('pengaturan'); }}
-                  className={`p-3 rounded-xl text-left flex items-center gap-3 transition cursor-pointer ${activeMenu === 'pengaturan' ? 'bg-emerald-600 text-white font-bold' : 'hover:bg-slate-800 hover:text-white'}`}
-                >
-                  <Settings size={16} /> Koneksi Google Sheets
-                </button>
+                {currentUser.role !== UserRole.WALI_KELAS && currentUser.role !== UserRole.GURU_PIKET && (
+                  <>
+                    <button 
+                      onClick={() => { setActiveMenu('dokumen'); }}
+                      className={`p-3 rounded-xl text-left flex items-center gap-3 transition cursor-pointer ${activeMenu === 'dokumen' ? 'bg-emerald-600 text-white font-bold' : 'hover:bg-slate-800 hover:text-white'}`}
+                    >
+                      <Upload size={16} /> Arsip & Surat Resmi
+                    </button>
+                    <button 
+                      onClick={() => { setActiveMenu('master'); }}
+                      className={`p-3 rounded-xl text-left flex items-center gap-3 transition cursor-pointer ${activeMenu === 'master' ? 'bg-emerald-600 text-white font-bold' : 'hover:bg-slate-800 hover:text-white'}`}
+                    >
+                      <FileSpreadsheet size={16} /> Pelaporan & Master
+                    </button>
+                    <button 
+                      onClick={() => { setActiveMenu('pengaturan'); }}
+                      className={`p-3 rounded-xl text-left flex items-center gap-3 transition cursor-pointer ${activeMenu === 'pengaturan' ? 'bg-emerald-600 text-white font-bold' : 'hover:bg-slate-800 hover:text-white'}`}
+                    >
+                      <Settings size={16} /> Koneksi Google Sheets
+                    </button>
+                  </>
+                )}
               </>
             )}
           </nav>
@@ -516,22 +753,14 @@ export default function App() {
               <p className="text-[10px] text-slate-400 truncate">{currentUser.role}</p>
             </div>
           </div>
-          <button 
-            onClick={handleLogout}
-            className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-rose-400 font-bold rounded-xl text-center cursor-pointer transition flex items-center justify-center gap-1.5"
-          >
-            <LogOut size={14} /> Keluar Sistem
-          </button>
         </div>
       </aside>
 
       {/* 2. MOBILE HEADER & NAVIGATION */}
       <div id="mobile-navbar" className="md:hidden bg-slate-900 text-slate-200 p-4 flex items-center justify-between relative z-20">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white font-bold">
-            <GraduationCap size={18} />
-          </div>
-          <span className="font-bold text-xs uppercase tracking-wider">HDS BK</span>
+        <div className="flex flex-col">
+          <span className="font-extrabold text-xs text-white uppercase tracking-wider leading-none">Sistem HDS BK</span>
+          <span className="text-[9px] text-slate-400 font-medium mt-1 leading-none">SMP Negeri 17 Tangerang Selatan</span>
         </div>
         <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-1">
           {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
@@ -544,12 +773,121 @@ export default function App() {
               <button onClick={() => { setActiveMenu('siswa'); setMobileMenuOpen(false); }} className="p-2.5 rounded-lg text-left hover:bg-slate-800">Profil Saya (HDS)</button>
             ) : (
               <>
-                <button onClick={() => { setActiveMenu('dashboard'); setMobileMenuOpen(false); }} className="p-2.5 rounded-lg text-left hover:bg-slate-800">Dashboard Evaluasi</button>
-                <button onClick={() => { setActiveMenu('siswa'); setMobileMenuOpen(false); }} className="p-2.5 rounded-lg text-left hover:bg-slate-800">Direktori Siswa (HDS)</button>
+                {currentUser.role !== UserRole.WALI_KELAS && currentUser.role !== UserRole.GURU_PIKET && (
+                  <button onClick={() => { setActiveMenu('dashboard'); setMobileMenuOpen(false); }} className="p-2.5 rounded-lg text-left hover:bg-slate-800">Dashboard Evaluasi</button>
+                )}
+                <button 
+                  onClick={() => { 
+                    setActiveMenu('siswa'); 
+                    if (currentUser.role !== UserRole.WALI_KELAS) {
+                      setDeepLinkKelasId(undefined); 
+                    }
+                    setMobileMenuOpen(false); 
+                  }} 
+                  className="p-2.5 rounded-lg text-left hover:bg-slate-800"
+                >
+                  Direktori Siswa (HDS)
+                </button>
+
+                {/* Mobile Ruang Wali Kelas Collapsible */}
+                {currentUser.role !== UserRole.WALI_KELAS && currentUser.role !== UserRole.GURU_PIKET && (
+                  <div className="flex flex-col">
+                    <button 
+                      onClick={() => { setRuangWaliOpen(!ruangWaliOpen); }}
+                      className="p-2.5 rounded-lg text-left hover:bg-slate-800 flex items-center justify-between text-amber-400 font-bold"
+                    >
+                      <span>Ruang Wali Kelas</span>
+                      {ruangWaliOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    </button>
+                    {ruangWaliOpen && (
+                      <div className="ml-3 pl-3 border-l border-slate-800 flex flex-col gap-3 py-1.5 text-[11px]">
+                        {/* Kelas 7 */}
+                        <div>
+                          <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">Kelas VII</p>
+                          <div className="grid grid-cols-4 gap-1">
+                            {Array.from({ length: 11 }).map((_, i) => {
+                              const classId = `kl-${i + 1}`;
+                              return (
+                                <button
+                                  key={classId}
+                                  onClick={() => {
+                                    setActiveMenu('siswa');
+                                    setDeepLinkKelasId(classId);
+                                    setDeepLinkSiswaId(undefined);
+                                    setMobileMenuOpen(false);
+                                  }}
+                                  className={`py-1 rounded text-center font-semibold ${
+                                    deepLinkKelasId === classId ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-300'
+                                  }`}
+                                >
+                                  {i + 1}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        {/* Kelas 8 */}
+                        <div>
+                          <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">Kelas VIII</p>
+                          <div className="grid grid-cols-4 gap-1">
+                            {Array.from({ length: 11 }).map((_, i) => {
+                              const classId = `kl-${i + 12}`;
+                              return (
+                                <button
+                                  key={classId}
+                                  onClick={() => {
+                                    setActiveMenu('siswa');
+                                    setDeepLinkKelasId(classId);
+                                    setDeepLinkSiswaId(undefined);
+                                    setMobileMenuOpen(false);
+                                  }}
+                                  className={`py-1 rounded text-center font-semibold ${
+                                    deepLinkKelasId === classId ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-300'
+                                  }`}
+                                >
+                                  {i + 1}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        {/* Kelas 9 */}
+                        <div>
+                          <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">Kelas IX</p>
+                          <div className="grid grid-cols-4 gap-1">
+                            {Array.from({ length: 11 }).map((_, i) => {
+                              const classId = `kl-${i + 23}`;
+                              return (
+                                <button
+                                  key={classId}
+                                  onClick={() => {
+                                    setActiveMenu('siswa');
+                                    setDeepLinkKelasId(classId);
+                                    setDeepLinkSiswaId(undefined);
+                                    setMobileMenuOpen(false);
+                                  }}
+                                  className={`py-1 rounded text-center font-semibold ${
+                                    deepLinkKelasId === classId ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-300'
+                                  }`}
+                                >
+                                  {i + 1}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <button onClick={() => { setActiveMenu('layanan'); setMobileMenuOpen(false); }} className="p-2.5 rounded-lg text-left hover:bg-slate-800">Layanan BK & Disiplin</button>
-                <button onClick={() => { setActiveMenu('dokumen'); setMobileMenuOpen(false); }} className="p-2.5 rounded-lg text-left hover:bg-slate-800">Arsip & Surat Resmi</button>
-                <button onClick={() => { setActiveMenu('master'); setMobileMenuOpen(false); }} className="p-2.5 rounded-lg text-left hover:bg-slate-800">Pelaporan & Master</button>
-                <button onClick={() => { setActiveMenu('pengaturan'); setMobileMenuOpen(false); }} className="p-2.5 rounded-lg text-left hover:bg-slate-800">Koneksi Google Sheets</button>
+                {currentUser.role !== UserRole.WALI_KELAS && currentUser.role !== UserRole.GURU_PIKET && (
+                  <>
+                    <button onClick={() => { setActiveMenu('dokumen'); setMobileMenuOpen(false); }} className="p-2.5 rounded-lg text-left hover:bg-slate-800">Arsip & Surat Resmi</button>
+                    <button onClick={() => { setActiveMenu('master'); setMobileMenuOpen(false); }} className="p-2.5 rounded-lg text-left hover:bg-slate-800">Pelaporan & Master</button>
+                    <button onClick={() => { setActiveMenu('pengaturan'); setMobileMenuOpen(false); }} className="p-2.5 rounded-lg text-left hover:bg-slate-800">Koneksi Google Sheets</button>
+                  </>
+                )}
               </>
             )}
             <button onClick={handleLogout} className="p-2.5 text-rose-400 hover:bg-slate-800 rounded-lg text-left mt-2 border-t border-slate-800 font-bold">Keluar Sistem</button>
@@ -558,7 +896,43 @@ export default function App() {
       </div>
 
       {/* 3. MAIN WORKSPACE */}
-      <main id="main-content-panel" className="flex-1 p-4 md:p-8 overflow-y-auto max-w-7xl mx-auto w-full">
+      <main id="main-content-panel" className="flex-1 p-4 md:p-8 overflow-y-auto max-w-7xl mx-auto w-full relative">
+        {/* Top Header Bar containing the logout button and online status */}
+        <div id="top-right-header-bar" className="flex justify-between items-center mb-6 pb-3 border-b border-slate-200/60 animate-fade-in">
+          <div className="flex items-center gap-2 text-slate-500 font-medium">
+            <span className="text-[10px] bg-slate-100 px-2 py-1 rounded-md text-slate-600 uppercase font-bold tracking-wider">
+              {currentUser.role === UserRole.SISWA ? 'Portal Siswa' : 'Portal BK & Staf'}
+            </span>
+            <span className="text-slate-300">|</span>
+            <span className="text-xs text-slate-400 font-semibold">{currentUser.nama}</span>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            {/* Display Connection/Online Status */}
+            {connStatus === 'connected' && (
+              <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Google Sheets Aktif
+              </span>
+            )}
+            {connStatus === 'checking' && (
+              <span className="text-[10px] text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-spin"></span> Sinkronisasi...
+              </span>
+            )}
+            {(connStatus === 'failed' || connStatus === 'idle') && (
+              <span className="text-[10px] text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span> Mode Offline
+              </span>
+            )}
+
+            <button 
+              onClick={handleLogout}
+              className="px-3.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200/30 rounded-xl font-bold text-xs cursor-pointer transition flex items-center gap-1.5 shadow-xs hover:scale-[1.02] active:scale-[0.98]"
+            >
+              <LogOut size={13} className="text-rose-500" /> Keluar Sistem
+            </button>
+          </div>
+        </div>
         {/* Dynamic content rendering based on activeMenu */}
         
         {/* VIEW 1: DASHBOARD */}
@@ -594,6 +968,7 @@ export default function App() {
             }}
             preSelectedSiswaId={deepLinkSiswaId}
             preSelectedSubTab={deepLinkSubTab}
+            preSelectedKelasId={deepLinkKelasId}
             onSaveSurat={async (s, isNew) => {
               setDb(prev => {
                 if (!prev) return prev;
@@ -623,6 +998,7 @@ export default function App() {
           <KonselingView 
             db={db}
             currentUser={currentUser}
+            preSelectedKelasId={deepLinkKelasId}
             onSaveKonseling={async (k, isNew) => {
               setDb(prev => {
                 if (!prev) return prev;
