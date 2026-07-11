@@ -31,10 +31,30 @@ import {
 
 const LOCAL_STORAGE_KEY = 'hds_bk_database_v1';
 
+export function cleanSpreadsheetId(input: string): string {
+  if (!input) return '';
+  const trimmed = input.trim();
+  
+  // If it's a full Google Spreadsheet URL, extract the ID
+  if (trimmed.includes('docs.google.com/spreadsheets')) {
+    const matches = trimmed.match(/\/d\/([a-zA-Z0-9-_]+)/);
+    if (matches && matches[1]) {
+      return matches[1];
+    }
+  }
+  
+  // If they mistakenly put a Google Apps Script URL as Spreadsheet ID, return empty
+  if (trimmed.includes('script.google.com')) {
+    return '';
+  }
+  
+  return trimmed;
+}
+
 // Seed data to make the dashboard charts and widgets look spectacular and complete right away
 const INITIAL_DATABASE: DatabaseState = {
   config: {
-    gasApiUrl: 'https://script.google.com/macros/s/AKfycbz8ooxfXeA6q9ozWdRFLgSEFnfpMkm1vYKRdZDPglP9_tNpE7dQbVSTiYmlP3AOCh-j/exec',
+    gasApiUrl: 'https://script.google.com/macros/s/AKfycbxdvhErI_8T-AqgBYVJoJixmjHai7snW2t1JhDck0MlGHcHMjYa9Su02FyvIFJqz_4h/exec',
   },
   users: [
     { id: 'usr-1', username: 'admin', nama: 'Holfi Aulia, S.Pd', role: UserRole.ADMIN, email: 'holfi.aulia@sekolah.sch.id', isActive: true },
@@ -367,17 +387,25 @@ export function sanitizeDatabaseState(parsed: any): { sanitized: DatabaseState; 
   // Ensure config block is present
   if (!parsed.config || typeof parsed.config !== 'object') {
     parsed.config = { 
-      gasApiUrl: 'https://script.google.com/macros/s/AKfycbz8ooxfXeA6q9ozWdRFLgSEFnfpMkm1vYKRdZDPglP9_tNpE7dQbVSTiYmlP3AOCh-j/exec', 
-      spreadsheetId: ((import.meta as any).env?.VITE_SPREADSHEET_ID as string) || '' 
+      gasApiUrl: 'https://script.google.com/macros/s/AKfycbxdvhErI_8T-AqgBYVJoJixmjHai7snW2t1JhDck0MlGHcHMjYa9Su02FyvIFJqz_4h/exec', 
+      spreadsheetId: cleanSpreadsheetId(((import.meta as any).env?.VITE_SPREADSHEET_ID as string) || '') 
     };
     migrated = true;
   } else {
     const originalGas = parsed.config.gasApiUrl;
     const originalSpreadsheet = parsed.config.spreadsheetId;
+    
+    // Auto-heal: If the user has the old stale gasApiUrl stored, update it dynamically!
+    let targetGas = (parsed.config.gasApiUrl || '').toString().trim();
+    if (!targetGas || targetGas === '' || targetGas.includes('AKfycbz8ooxfXeA6q9ozWdRFLgSEFnfpMkm1vYKRdZDPglP9_tNpE7dQbVSTiYmlP3AOCh-j')) {
+      targetGas = 'https://script.google.com/macros/s/AKfycbxdvhErI_8T-AqgBYVJoJixmjHai7snW2t1JhDck0MlGHcHMjYa9Su02FyvIFJqz_4h/exec';
+    }
+    
     parsed.config = {
-      gasApiUrl: (parsed.config.gasApiUrl && parsed.config.gasApiUrl.trim() !== '' ? parsed.config.gasApiUrl : 'https://script.google.com/macros/s/AKfycbz8ooxfXeA6q9ozWdRFLgSEFnfpMkm1vYKRdZDPglP9_tNpE7dQbVSTiYmlP3AOCh-j/exec').toString().trim(),
-      spreadsheetId: (parsed.config.spreadsheetId || ((import.meta as any).env?.VITE_SPREADSHEET_ID as string) || '').toString().trim()
+      gasApiUrl: targetGas,
+      spreadsheetId: cleanSpreadsheetId(parsed.config.spreadsheetId || ((import.meta as any).env?.VITE_SPREADSHEET_ID as string) || '')
     };
+    
     if (parsed.config.gasApiUrl !== originalGas || parsed.config.spreadsheetId !== originalSpreadsheet) {
       migrated = true;
     }
@@ -641,7 +669,23 @@ function saveLocalDatabase(db: DatabaseState) {
 }
 
 export const getGasApiUrl = (): string => {
-  return currentDatabase.config.gasApiUrl || ((import.meta as any).env?.VITE_GAS_API_URL as string) || 'https://script.google.com/macros/s/AKfycbz8ooxfXeA6q9ozWdRFLgSEFnfpMkm1vYKRdZDPglP9_tNpE7dQbVSTiYmlP3AOCh-j/exec';
+  // 1. Prioritize environment variable first (especially for Vercel production deployments)
+  const envUrl = (import.meta as any).env?.VITE_GAS_API_URL as string;
+  if (envUrl && envUrl.trim() !== '' && !envUrl.includes('placeholder')) {
+    return envUrl.trim();
+  }
+  
+  // 2. Otherwise use the user's runtime configured URL from LocalStorage
+  if (currentDatabase?.config?.gasApiUrl) {
+    const localUrl = currentDatabase.config.gasApiUrl.trim();
+    // Only return if it's not the default stale boilerplate/placeholder URL
+    if (localUrl !== '' && !localUrl.includes('AKfycbz8ooxfXeA6q9ozWdRFLgSEFnfpMkm1vYKRdZDPglP9_tNpE7dQbVSTiYmlP3AOCh-j')) {
+      return localUrl;
+    }
+  }
+
+  // 3. Fallback to the user's active Google Apps Script Web App URL
+  return 'https://script.google.com/macros/s/AKfycbxdvhErI_8T-AqgBYVJoJixmjHai7snW2t1JhDck0MlGHcHMjYa9Su02FyvIFJqz_4h/exec';
 };
 
 export const setGasApiUrl = (url: string) => {
@@ -651,12 +695,21 @@ export const setGasApiUrl = (url: string) => {
 };
 
 export const getSpreadsheetId = (): string => {
-  return currentDatabase.config.spreadsheetId || ((import.meta as any).env?.VITE_SPREADSHEET_ID as string) || '';
+  // 1. Prioritize environment variable first (unless it was mistakenly configured with the Apps Script URL)
+  const envId = (import.meta as any).env?.VITE_SPREADSHEET_ID as string;
+  let rawId = '';
+  if (envId && envId.trim() !== '' && !envId.includes('script.google.com')) {
+    rawId = envId.trim();
+  } else {
+    rawId = currentDatabase?.config?.spreadsheetId || '';
+  }
+  
+  return cleanSpreadsheetId(rawId);
 };
 
 export const setSpreadsheetId = (id: string) => {
   const db = { ...currentDatabase };
-  db.config.spreadsheetId = id ? id.trim() : '';
+  db.config.spreadsheetId = id ? cleanSpreadsheetId(id) : '';
   saveLocalDatabase(db);
 };
 
